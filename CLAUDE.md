@@ -15,7 +15,7 @@ PDF.js uses a Web Worker for parsing. The worker version MUST match the library 
 
 ```js
 import * as pdfjsLib from "pdfjs-dist";
-import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 ```
 
