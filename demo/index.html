@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDF Viewer Demo</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "pdfjs-dist": "/node_modules/pdfjs-dist/build/pdf.mjs"
+        }
+      }
+    </script>
+    <style>
+      body {
+        margin: 0;
+        background: #525659;
+        display: flex;
+        justify-content: center;
+        padding: 2rem;
+      }
+      canvas {
+        display: block;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="pdf-canvas"></canvas>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

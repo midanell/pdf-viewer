@@ -1,0 +1,11 @@
+{
+  "name": "pdf-viewer",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "npx serve ."
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.10.38"
+  }
+}
