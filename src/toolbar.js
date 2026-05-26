@@ -9,6 +9,7 @@ export class PdfToolbar {
     onZoomIn,
     onZoomOut,
     onFitWidth,
+    onSearch,
   }) {
     this._currentPage = currentPage;
     this._pageCount = pageCount;
@@ -142,10 +143,38 @@ export class PdfToolbar {
 
     zoomGroup.append(zoomOut, display, zoomIn, fitWidth);
 
-    // --- Right placeholder (keeps the center cell centered) ---
-    const rightSlot = document.createElement("div");
+    // --- Search group (right cell) ---
+    const searchGroup = document.createElement("div");
+    searchGroup.className = "pdf-viewer-search-group";
+    Object.assign(searchGroup.style, groupStyle, { justifySelf: "end" });
 
-    toolbar.append(navGroup, zoomGroup, rightSlot);
+    const searchInput = document.createElement("input");
+    searchInput.className = "pdf-viewer-search";
+    searchInput.type = "search";
+    searchInput.placeholder = "Search…";
+    Object.assign(searchInput.style, {
+      width: "160px",
+      height: "26px",
+      padding: "0 8px",
+      background: "rgba(0,0,0,0.4)",
+      color: "#fff",
+      border: "1px solid rgba(255,255,255,0.15)",
+      borderRadius: "3px",
+      fontSize: "13px",
+      boxSizing: "border-box",
+    });
+
+    this._searchTimer = null;
+    searchInput.oninput = () => {
+      clearTimeout(this._searchTimer);
+      this._searchTimer = setTimeout(() => {
+        onSearch?.(searchInput.value.trim());
+      }, 250);
+    };
+
+    searchGroup.append(searchInput);
+
+    toolbar.append(navGroup, zoomGroup, searchGroup);
     host.prepend(toolbar);
 
     this._el = toolbar;
@@ -179,6 +208,7 @@ export class PdfToolbar {
   }
 
   destroy() {
+    clearTimeout(this._searchTimer);
     this._el?.remove();
     this._el = null;
     this._zoomDisplay = null;

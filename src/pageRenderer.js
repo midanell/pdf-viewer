@@ -32,6 +32,10 @@ export class PageRenderer {
     return this._currentScale !== null;
   }
 
+  get textDiv() {
+    return this._textDiv;
+  }
+
   setSize({ scale }) {
     this._intendedScale = scale;
     const viewport = this.page.getViewport({ scale });

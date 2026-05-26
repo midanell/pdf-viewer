@@ -28,6 +28,7 @@ export class PdfViewer {
     this._pageObserver = null;
     this._scrollingTo = false;
     this._scrollingToTimer = null;
+    this._searchQuery = "";
     this._onWheel = (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
@@ -78,6 +79,7 @@ export class PdfViewer {
         onZoomIn: () => this.zoomIn(),
         onZoomOut: () => this.zoomOut(),
         onFitWidth: () => this.setZoom("fit-width"),
+        onSearch: (q) => this.search(q),
       });
     }
 
@@ -167,6 +169,66 @@ export class PdfViewer {
 
   getPageCount() {
     return this.pdf?.numPages ?? 0;
+  }
+
+  search(query) {
+    this._searchQuery = query ?? "";
+    this._clearAllMarks();
+    if (!this._searchQuery) return;
+    for (const pr of this.renderers) {
+      if (pr.isRendered) this._applySearchToPage(pr);
+    }
+  }
+
+  _clearAllMarks() {
+    for (const pr of this.renderers) {
+      const div = pr.textDiv;
+      if (!div) continue;
+      const marks = div.querySelectorAll("mark");
+      for (const m of marks) {
+        m.parentNode.replaceChild(document.createTextNode(m.textContent), m);
+      }
+      div.normalize();
+    }
+  }
+
+  _applySearchToPage(pr) {
+    const div = pr.textDiv;
+    if (!div || !this._searchQuery) return;
+    const pattern = this._searchQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(pattern, "gi");
+    const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.parentNode?.tagName === "MARK") continue;
+      textNodes.push(node);
+    }
+    for (const textNode of textNodes) {
+      const text = textNode.nodeValue;
+      re.lastIndex = 0;
+      if (!re.test(text)) continue;
+      re.lastIndex = 0;
+      const frag = document.createDocumentFragment();
+      let lastIdx = 0;
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        if (m.index > lastIdx) {
+          frag.appendChild(document.createTextNode(text.slice(lastIdx, m.index)));
+        }
+        const mark = document.createElement("mark");
+        mark.textContent = m[0];
+        mark.style.cssText =
+          "background-color: rgba(255,200,0,0.5); color: inherit; padding: 0; border-radius: 2px;";
+        frag.appendChild(mark);
+        lastIdx = re.lastIndex;
+        if (m.index === re.lastIndex) re.lastIndex++;
+      }
+      if (lastIdx < text.length) {
+        frag.appendChild(document.createTextNode(text.slice(lastIdx)));
+      }
+      textNode.parentNode.replaceChild(frag, textNode);
+    }
   }
 
   _effectiveScale() {
@@ -262,9 +324,13 @@ export class PdfViewer {
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
           const pr = this._rendererByWrapper.get(entry.target);
-          pr?.render().catch((e) => {
-            if (e?.name !== "RenderingCancelledException") console.error(e);
-          });
+          pr?.render()
+            .then(() => {
+              if (this._searchQuery) this._applySearchToPage(pr);
+            })
+            .catch((e) => {
+              if (e?.name !== "RenderingCancelledException") console.error(e);
+            });
         }
       },
       { root: this._scrollRoot, rootMargin: "200px" }
