@@ -6,6 +6,7 @@ await viewer.load("./sample.pdf");
 
 // Divider drag — demo only, not part of the viewer library
 const divider = document.getElementById("divider");
+const main = document.getElementById("main");
 
 divider.addEventListener("pointerdown", (e) => {
   e.preventDefault();
@@ -13,8 +14,12 @@ divider.addEventListener("pointerdown", (e) => {
   divider.setPointerCapture(e.pointerId);
 
   const onMove = (ev) => {
-    const sidebarPx = Math.min(Math.max(ev.clientX, 150), 600);
-    document.body.style.gridTemplateColumns = `${sidebarPx}px 6px 1fr`;
+    const available = document.body.clientWidth - 6;
+    const mainWidth = Math.min(
+      Math.max(available - ev.clientX, 300),
+      available - 150,
+    );
+    main.style.width = `${mainWidth}px`;
   };
 
   const onUp = () => {
