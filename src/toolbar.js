@@ -9,6 +9,7 @@ export class PdfToolbar {
       pageCount,
       currentPage = 1,
       scale = 1,
+      fitWidthActive = true,
       onPrev,
       onNext,
       onGoToPage,
@@ -181,6 +182,7 @@ export class PdfToolbar {
     fitWidth.title = "Fit width";
     fitWidth.textContent = "Fit width";
     Object.assign(fitWidth.style, btnBase);
+    fitWidth.style.background = fitWidthActive ? TOGGLE_ON : TOGGLE_OFF;
 
     zoomOut.onclick = () => onZoomOut?.();
     zoomIn.onclick = () => onZoomIn?.();
@@ -345,6 +347,7 @@ export class PdfToolbar {
 
     this._el = toolbar;
     this._zoomDisplay = display;
+    this._fitWidthBtn = fitWidth;
     this._navInput = navInput;
     this._navTotal = navTotal;
     this._prevBtn = prev;
@@ -376,6 +379,11 @@ export class PdfToolbar {
   updateZoom(scale) {
     if (!this._zoomDisplay) return;
     this._zoomDisplay.textContent = `${Math.round(scale * 100)}%`;
+  }
+
+  updateFitWidth(active) {
+    if (!this._fitWidthBtn) return;
+    this._fitWidthBtn.style.background = active ? TOGGLE_ON : TOGGLE_OFF;
   }
 
   _setCompact(compact) {
@@ -452,6 +460,7 @@ export class PdfToolbar {
     this._el?.remove();
     this._el = null;
     this._zoomDisplay = null;
+    this._fitWidthBtn = null;
     this._navInput = null;
     this._navTotal = null;
     this._prevBtn = null;

@@ -78,6 +78,7 @@ export class PdfViewer {
         pageCount: this.pdf.numPages,
         currentPage: this._currentPage,
         scale: this._effectiveScale(),
+        fitWidthActive: this._zoomMode === "fit-width",
         onPrev: () => this.goToPage(this._currentPage - 1),
         onNext: () => this.goToPage(this._currentPage + 1),
         onGoToPage: (n) => this.goToPage(n),
@@ -139,6 +140,7 @@ export class PdfViewer {
     return this._applyScale().then(() => {
       this._restoreScrollAnchor(anchor);
       this._toolbar?.updateZoom(this._effectiveScale());
+      this._toolbar?.updateFitWidth(this._zoomMode === "fit-width");
     });
   }
 
