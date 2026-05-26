@@ -3,6 +3,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import { PageRenderer } from "./pageRenderer.js";
 import { createLinkService } from "./linkService.js";
 import { PdfToolbar } from "./toolbar.js";
+import { PdfSearch } from "./search.js";
 
 const ZOOM_STEPS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0];
 
@@ -28,7 +29,7 @@ export class PdfViewer {
     this._pageObserver = null;
     this._scrollingTo = false;
     this._scrollingToTimer = null;
-    this._searchQuery = "";
+    this._search = null;
     this._onWheel = (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
@@ -68,6 +69,10 @@ export class PdfViewer {
       this.host.appendChild(pr.wrapper);
     }
 
+    this._search = new PdfSearch(this.renderers, {
+      onUpdate: (cur, tot) => this._toolbar?.updateSearch(cur, tot),
+    });
+
     if (this._zoomControls) {
       this._toolbar = new PdfToolbar(this.host, {
         pageCount: this.pdf.numPages,
@@ -79,7 +84,10 @@ export class PdfViewer {
         onZoomIn: () => this.zoomIn(),
         onZoomOut: () => this.zoomOut(),
         onFitWidth: () => this.setZoom("fit-width"),
-        onSearch: (q) => this.search(q),
+        onSearch: ({ query, matchCase, wholeWord }) =>
+          this.search(query, { matchCase, wholeWord }),
+        onPrevMatch: () => this.prevMatch(),
+        onNextMatch: () => this.nextMatch(),
       });
     }
 
@@ -108,6 +116,8 @@ export class PdfViewer {
 
     this._toolbar?.destroy();
     this._toolbar = null;
+    this._search?.destroy();
+    this._search = null;
 
     await Promise.all(this.renderers.map((pr) => pr.cancel().catch(() => {})));
     for (const pr of this.renderers) pr.wrapper.remove();
@@ -171,64 +181,16 @@ export class PdfViewer {
     return this.pdf?.numPages ?? 0;
   }
 
-  search(query) {
-    this._searchQuery = query ?? "";
-    this._clearAllMarks();
-    if (!this._searchQuery) return;
-    for (const pr of this.renderers) {
-      if (pr.isRendered) this._applySearchToPage(pr);
-    }
+  search(query, opts) {
+    return this._search?.search(query, opts);
   }
 
-  _clearAllMarks() {
-    for (const pr of this.renderers) {
-      const div = pr.textDiv;
-      if (!div) continue;
-      const marks = div.querySelectorAll("mark");
-      for (const m of marks) {
-        m.parentNode.replaceChild(document.createTextNode(m.textContent), m);
-      }
-      div.normalize();
-    }
+  nextMatch() {
+    return this._search?.nextMatch();
   }
 
-  _applySearchToPage(pr) {
-    const div = pr.textDiv;
-    if (!div || !this._searchQuery) return;
-    const pattern = this._searchQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(pattern, "gi");
-    const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT);
-    const textNodes = [];
-    let node;
-    while ((node = walker.nextNode())) {
-      if (node.parentNode?.tagName === "MARK") continue;
-      textNodes.push(node);
-    }
-    for (const textNode of textNodes) {
-      const text = textNode.nodeValue;
-      re.lastIndex = 0;
-      if (!re.test(text)) continue;
-      re.lastIndex = 0;
-      const frag = document.createDocumentFragment();
-      let lastIdx = 0;
-      let m;
-      while ((m = re.exec(text)) !== null) {
-        if (m.index > lastIdx) {
-          frag.appendChild(document.createTextNode(text.slice(lastIdx, m.index)));
-        }
-        const mark = document.createElement("mark");
-        mark.textContent = m[0];
-        mark.style.cssText =
-          "background-color: rgba(255,200,0,0.5); color: inherit; padding: 0; border-radius: 2px;";
-        frag.appendChild(mark);
-        lastIdx = re.lastIndex;
-        if (m.index === re.lastIndex) re.lastIndex++;
-      }
-      if (lastIdx < text.length) {
-        frag.appendChild(document.createTextNode(text.slice(lastIdx)));
-      }
-      textNode.parentNode.replaceChild(frag, textNode);
-    }
+  prevMatch() {
+    return this._search?.prevMatch();
   }
 
   _effectiveScale() {
@@ -325,9 +287,7 @@ export class PdfViewer {
           if (!entry.isIntersecting) continue;
           const pr = this._rendererByWrapper.get(entry.target);
           pr?.render()
-            .then(() => {
-              if (this._searchQuery) this._applySearchToPage(pr);
-            })
+            .then(() => this._search?.applyToPage(pr))
             .catch((e) => {
               if (e?.name !== "RenderingCancelledException") console.error(e);
             });

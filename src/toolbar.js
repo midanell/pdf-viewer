@@ -1,16 +1,21 @@
 export class PdfToolbar {
-  constructor(host, {
-    pageCount,
-    currentPage = 1,
-    scale = 1,
-    onPrev,
-    onNext,
-    onGoToPage,
-    onZoomIn,
-    onZoomOut,
-    onFitWidth,
-    onSearch,
-  }) {
+  constructor(
+    host,
+    {
+      pageCount,
+      currentPage = 1,
+      scale = 1,
+      onPrev,
+      onNext,
+      onGoToPage,
+      onZoomIn,
+      onZoomOut,
+      onFitWidth,
+      onSearch,
+      onPrevMatch,
+      onNextMatch,
+    },
+  ) {
     this._currentPage = currentPage;
     this._pageCount = pageCount;
 
@@ -164,15 +169,86 @@ export class PdfToolbar {
       boxSizing: "border-box",
     });
 
+    const matchCaseBtn = document.createElement("button");
+    matchCaseBtn.className = "pdf-viewer-match-case";
+    matchCaseBtn.title = "Match case";
+    matchCaseBtn.textContent = "Aa";
+    Object.assign(matchCaseBtn.style, btnBase);
+
+    const wholeWordBtn = document.createElement("button");
+    wholeWordBtn.className = "pdf-viewer-whole-word";
+    wholeWordBtn.title = "Match whole word";
+    wholeWordBtn.innerHTML = "<u>ab</u>";
+    Object.assign(wholeWordBtn.style, btnBase);
+
+    const counter = document.createElement("span");
+    counter.className = "pdf-viewer-search-count";
+    Object.assign(counter.style, {
+      minWidth: "56px",
+      textAlign: "center",
+      fontSize: "11px",
+      color: "rgba(255,255,255,0.7)",
+    });
+
+    const prevMatchBtn = document.createElement("button");
+    prevMatchBtn.className = "pdf-viewer-prev-match";
+    prevMatchBtn.title = "Previous match";
+    prevMatchBtn.textContent = "<";
+    Object.assign(prevMatchBtn.style, btnBase);
+
+    const nextMatchBtn = document.createElement("button");
+    nextMatchBtn.className = "pdf-viewer-next-match";
+    nextMatchBtn.title = "Next match";
+    nextMatchBtn.textContent = ">";
+    Object.assign(nextMatchBtn.style, btnBase);
+
+    let matchCase = false;
+    let wholeWord = false;
+    const TOGGLE_ON = "rgba(74,158,255,0.6)";
+    const TOGGLE_OFF = "rgba(255,255,255,0.15)";
+
+    const applyToggleStyle = (btn, active) => {
+      btn.style.background = active ? TOGGLE_ON : TOGGLE_OFF;
+    };
+    applyToggleStyle(matchCaseBtn, false);
+    applyToggleStyle(wholeWordBtn, false);
+
+    const triggerSearch = () => {
+      onSearch?.({
+        query: searchInput.value.trim(),
+        matchCase,
+        wholeWord,
+      });
+    };
+
     this._searchTimer = null;
     searchInput.oninput = () => {
       clearTimeout(this._searchTimer);
-      this._searchTimer = setTimeout(() => {
-        onSearch?.(searchInput.value.trim());
-      }, 250);
+      this._searchTimer = setTimeout(triggerSearch, 250);
     };
 
-    searchGroup.append(searchInput);
+    matchCaseBtn.onclick = () => {
+      matchCase = !matchCase;
+      applyToggleStyle(matchCaseBtn, matchCase);
+      triggerSearch();
+    };
+    wholeWordBtn.onclick = () => {
+      wholeWord = !wholeWord;
+      applyToggleStyle(wholeWordBtn, wholeWord);
+      triggerSearch();
+    };
+
+    prevMatchBtn.onclick = () => onPrevMatch?.();
+    nextMatchBtn.onclick = () => onNextMatch?.();
+
+    searchGroup.append(
+      searchInput,
+      matchCaseBtn,
+      wholeWordBtn,
+      prevMatchBtn,
+      counter,
+      nextMatchBtn,
+    );
 
     toolbar.append(navGroup, zoomGroup, searchGroup);
     host.prepend(toolbar);
@@ -183,8 +259,13 @@ export class PdfToolbar {
     this._navTotal = navTotal;
     this._prevBtn = prev;
     this._nextBtn = next;
+    this._searchInput = searchInput;
+    this._searchCount = counter;
+    this._prevMatchBtn = prevMatchBtn;
+    this._nextMatchBtn = nextMatchBtn;
 
     this.updateNav(currentPage, pageCount);
+    this.updateSearch(0, 0);
   }
 
   updateNav(currentPage, pageCount) {
@@ -207,6 +288,25 @@ export class PdfToolbar {
     this._zoomDisplay.textContent = `${Math.round(scale * 100)}%`;
   }
 
+  updateSearch(current, total) {
+    if (!this._searchCount) return;
+    const hasQuery = this._searchInput?.value.trim().length > 0;
+    if (total === 0 && !hasQuery) {
+      this._searchCount.textContent = "";
+    } else if (total === 0) {
+      this._searchCount.textContent = "No results";
+    } else {
+      this._searchCount.textContent = `${current} / ${total}`;
+    }
+    const hasMatches = total > 0;
+    const dim = (btn) => {
+      btn.style.opacity = hasMatches ? "1" : "0.4";
+      btn.style.pointerEvents = hasMatches ? "auto" : "none";
+    };
+    dim(this._prevMatchBtn);
+    dim(this._nextMatchBtn);
+  }
+
   destroy() {
     clearTimeout(this._searchTimer);
     this._el?.remove();
@@ -216,5 +316,9 @@ export class PdfToolbar {
     this._navTotal = null;
     this._prevBtn = null;
     this._nextBtn = null;
+    this._searchInput = null;
+    this._searchCount = null;
+    this._prevMatchBtn = null;
+    this._nextMatchBtn = null;
   }
 }
