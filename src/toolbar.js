@@ -58,6 +58,7 @@ export class PdfToolbar {
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
+      whiteSpace: "nowrap",
     };
 
     const groupStyle = {
@@ -87,7 +88,7 @@ export class PdfToolbar {
         marginTop: "4px",
         display: "none",
         flexDirection: "row",
-        flexWrap: "wrap",
+        flexWrap: "no-wrap",
         gap: "4px",
         padding: "6px 8px",
         background: "rgba(0,0,0,0.85)",
@@ -133,7 +134,7 @@ export class PdfToolbar {
     const navTotal = document.createElement("span");
     navTotal.className = "pdf-viewer-page-total";
     navTotal.textContent = `/ ${pageCount}`;
-    Object.assign(navTotal.style, { padding: "0 2px" });
+    Object.assign(navTotal.style, { padding: "0 2px", whiteSpace: "nowrap" });
 
     const next = document.createElement("button");
     next.className = "pdf-viewer-next";
