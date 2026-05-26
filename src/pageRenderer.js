@@ -8,9 +8,12 @@ export class PageRenderer {
     this.wrapper = document.createElement("div");
     this.wrapper.dataset.pageNumber = String(this.pageNumber);
     this.wrapper.style.position = "relative";
+    this.wrapper.style.backgroundColor = "#DDD";
     this.canvas = document.createElement("canvas");
     this.canvas.style.display = "block";
     this.wrapper.appendChild(this.canvas);
+    this._spinner = this._createSpinner();
+    this.wrapper.appendChild(this._spinner);
     this._task = null;
     this._currentScale = null;
     this._intendedScale = null;
@@ -108,7 +111,7 @@ export class PageRenderer {
             })
             .then(() => {
               this._annotRendered = true;
-            })
+            }),
         );
       } else {
         this._annotLayer.update({ viewport: annotViewport });
@@ -118,6 +121,7 @@ export class PageRenderer {
     try {
       await Promise.all([this._task.promise, textPromise, annotPromise]);
       this._currentScale = scale;
+      this._setSpinnerVisible(false);
       this.page.cleanup();
     } finally {
       this._task = null;
@@ -142,6 +146,7 @@ export class PageRenderer {
     if (this._intendedScale != null) {
       this.setSize({ scale: this._intendedScale });
     }
+    this._setSpinnerVisible(true);
   }
 
   _createTextDiv() {
@@ -156,6 +161,34 @@ export class PageRenderer {
     div.className = "annotationLayer";
     this.wrapper.appendChild(div);
     return div;
+  }
+
+  _createSpinner() {
+    const el = document.createElement("div");
+    el.className = "pdf-page-spinner";
+    Object.assign(el.style, {
+      position: "absolute",
+      top: "50%",
+      left: "50%",
+      width: "32px",
+      height: "32px",
+      marginTop: "-16px",
+      marginLeft: "-16px",
+      border: "3px solid rgba(0,0,0,0.12)",
+      borderTopColor: "rgba(0,0,0,0.55)",
+      borderRadius: "50%",
+      pointerEvents: "none",
+      boxSizing: "border-box",
+    });
+    el.animate(
+      [{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }],
+      { duration: 800, iterations: Infinity },
+    );
+    return el;
+  }
+
+  _setSpinnerVisible(visible) {
+    if (this._spinner) this._spinner.style.display = visible ? "block" : "none";
   }
 
   async _cancelActive() {
