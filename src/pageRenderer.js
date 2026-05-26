@@ -1,17 +1,18 @@
 import { TextLayer, AnnotationLayer, setLayerDimensions } from "pdfjs-dist";
 
 export class PageRenderer {
-  constructor(pdf, pageNumber, options = {}) {
-    this.pdf = pdf;
-    this.pageNumber = pageNumber;
-    this.page = null;
+  constructor(page, options = {}) {
+    this.page = page;
+    this.pageNumber = page.pageNumber;
     this.wrapper = document.createElement("div");
-    this.wrapper.dataset.pageNumber = String(pageNumber);
+    this.wrapper.dataset.pageNumber = String(this.pageNumber);
     this.wrapper.style.position = "relative";
     this.canvas = document.createElement("canvas");
     this.canvas.style.display = "block";
     this.wrapper.appendChild(this.canvas);
     this._task = null;
+    this._currentScale = null;
+    this._intendedScale = null;
     this.textLayerEnabled = options.textLayer ?? true;
     this._textDiv = null;
     this._textLayer = null;
@@ -23,8 +24,23 @@ export class PageRenderer {
     this._annotRendered = false;
   }
 
-  async render({ scale = 1.5 } = {}) {
-    if (!this.page) this.page = await this.pdf.getPage(this.pageNumber);
+  get isRendered() {
+    return this._currentScale !== null;
+  }
+
+  setSize({ scale }) {
+    this._intendedScale = scale;
+    const viewport = this.page.getViewport({ scale });
+    const cssW = Math.floor(viewport.width);
+    const cssH = Math.floor(viewport.height);
+    this.wrapper.style.width = `${cssW}px`;
+    this.wrapper.style.height = `${cssH}px`;
+    this.wrapper.style.setProperty("--scale-factor", String(scale));
+  }
+
+  async render({ scale = this._intendedScale ?? 1.5 } = {}) {
+    if (this._currentScale === scale && !this._task) return;
+    this._intendedScale = scale;
     await this._cancelActive();
 
     const viewport = this.page.getViewport({ scale });
@@ -100,6 +116,7 @@ export class PageRenderer {
 
     try {
       await Promise.all([this._task.promise, textPromise, annotPromise]);
+      this._currentScale = scale;
     } finally {
       this._task = null;
     }
