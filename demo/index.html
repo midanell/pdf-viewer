@@ -57,6 +57,7 @@
       }
 
       #main {
+        position: relative;
         width: 600px;
         flex-shrink: 0;
         padding: 1rem;
@@ -68,6 +69,47 @@
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
         margin-bottom: 12px;
       }
+
+      #loading {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        background: rgba(82, 86, 89, 0.85);
+        color: #ddd;
+        font-size: 0.85rem;
+        pointer-events: none;
+      }
+
+      #loading.hidden { display: none; }
+
+      #loading-bar {
+        width: 240px;
+        height: 3px;
+        background: #1a1b1d;
+        border-radius: 2px;
+        overflow: hidden;
+      }
+
+      #loading-fill {
+        height: 100%;
+        width: 0;
+        background: #4a9eff;
+        transition: width 0.15s linear;
+      }
+
+      #loading.indeterminate #loading-fill {
+        width: 40%;
+        animation: indeterminate 1.2s ease-in-out infinite;
+      }
+
+      @keyframes indeterminate {
+        0%   { transform: translateX(-100%); }
+        100% { transform: translateX(250%); }
+      }
     </style>
   </head>
   <body>
@@ -78,6 +120,10 @@
     <div id="divider"></div>
     <main id="main">
       <div id="pdf-host"></div>
+      <div id="loading">
+        <div id="loading-text">Loading…</div>
+        <div id="loading-bar"><div id="loading-fill"></div></div>
+      </div>
     </main>
     <script type="module" src="./main.js"></script>
   </body>

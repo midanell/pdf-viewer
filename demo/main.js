@@ -2,7 +2,25 @@ import { PdfViewer } from "../src/viewer.js";
 
 const host = document.getElementById("pdf-host");
 const viewer = new PdfViewer(host);
-await viewer.load("./sample.pdf");
+
+const loading = document.getElementById("loading");
+const loadingText = document.getElementById("loading-text");
+const loadingFill = document.getElementById("loading-fill");
+
+await viewer.load("./sample.pdf", {
+  onProgress: ({ loaded, total }) => {
+    if (total > 0) {
+      loading.classList.remove("indeterminate");
+      const pct = Math.min(100, Math.round((loaded / total) * 100));
+      loadingText.textContent = `Loading ${pct}%`;
+      loadingFill.style.width = `${pct}%`;
+    } else {
+      loading.classList.add("indeterminate");
+      loadingText.textContent = "Loading…";
+    }
+  },
+});
+loading.classList.add("hidden");
 
 // Divider drag — demo only, not part of the viewer library
 const divider = document.getElementById("divider");

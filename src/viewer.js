@@ -18,8 +18,10 @@ export class PdfViewer {
     this._lastWidth = 0;
   }
 
-  async load(url) {
-    this.pdf = await pdfjsLib.getDocument(url).promise;
+  async load(url, options = {}) {
+    const loadingTask = pdfjsLib.getDocument(url);
+    if (options.onProgress) loadingTask.onProgress = options.onProgress;
+    this.pdf = await loadingTask.promise;
     this.linkService = createLinkService(this.pdf);
 
     const pages = await Promise.all(
