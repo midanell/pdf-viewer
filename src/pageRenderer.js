@@ -4,6 +4,7 @@ export class PageRenderer {
   constructor(page, options = {}) {
     this.page = page;
     this.pageNumber = page.pageNumber;
+    this.nativeWidth = page.getViewport({ scale: 1 }).width;
     this.wrapper = document.createElement("div");
     this.wrapper.dataset.pageNumber = String(this.pageNumber);
     this.wrapper.style.position = "relative";
@@ -44,7 +45,7 @@ export class PageRenderer {
     await this._cancelActive();
 
     const viewport = this.page.getViewport({ scale });
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const cssW = Math.floor(viewport.width);
     const cssH = Math.floor(viewport.height);
 
@@ -117,6 +118,7 @@ export class PageRenderer {
     try {
       await Promise.all([this._task.promise, textPromise, annotPromise]);
       this._currentScale = scale;
+      this.page.cleanup();
     } finally {
       this._task = null;
     }
@@ -124,6 +126,22 @@ export class PageRenderer {
 
   async cancel() {
     await this._cancelActive();
+  }
+
+  discard() {
+    this._cancelActive().catch(() => {});
+    this.canvas.width = 0;
+    this.canvas.height = 0;
+    if (this._textDiv) this._textDiv.replaceChildren();
+    if (this._annotDiv) this._annotDiv.replaceChildren();
+    this._textLayer = null;
+    this._annotLayer = null;
+    this._textRendered = false;
+    this._annotRendered = false;
+    this._currentScale = null;
+    if (this._intendedScale != null) {
+      this.setSize({ scale: this._intendedScale });
+    }
   }
 
   _createTextDiv() {

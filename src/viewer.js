@@ -13,6 +13,7 @@ export class PdfViewer {
     this._rendererByWrapper = new Map();
     this._observer = null;
     this._lazyObserver = null;
+    this._discardObserver = null;
     this._resizeTimer = null;
     this._lastWidth = 0;
   }
@@ -34,7 +35,7 @@ export class PdfViewer {
 
     for (const pr of this.renderers) {
       if (this.sizing === "fit-width") {
-        pr.setSize({ scale: this._fitScaleFor(pr.page, width) });
+        pr.setSize({ scale: this._fitScaleFor(pr, width) });
       } else {
         pr.setSize({ scale: this.scale });
       }
@@ -44,13 +45,25 @@ export class PdfViewer {
     await this.renderers[0].render();
 
     this._setupLazyObserver();
+    this._setupDiscardObserver();
     if (this.sizing === "fit-width") this._observe();
   }
 
-  destroy() {
+  async destroy() {
     this._observer?.disconnect();
     this._lazyObserver?.disconnect();
+    this._discardObserver?.disconnect();
     clearTimeout(this._resizeTimer);
+
+    await Promise.all(
+      this.renderers.map((pr) => pr.cancel().catch(() => {}))
+    );
+    for (const pr of this.renderers) pr.wrapper.remove();
+    this.renderers = [];
+    this._rendererByWrapper.clear();
+
+    await this.pdf?.destroy();
+    this.pdf = null;
   }
 
   _measureContentWidth() {
@@ -60,9 +73,8 @@ export class PdfViewer {
     return this.host.clientWidth - padL - padR;
   }
 
-  _fitScaleFor(page, width) {
-    const base = page.getViewport({ scale: 1 }).width;
-    return Math.max(width / base, 0.1);
+  _fitScaleFor(renderer, width) {
+    return Math.max(width / renderer.nativeWidth, 0.1);
   }
 
   _setupLazyObserver() {
@@ -80,6 +92,21 @@ export class PdfViewer {
       { root, rootMargin: "200px" }
     );
     for (const pr of this.renderers) this._lazyObserver.observe(pr.wrapper);
+  }
+
+  _setupDiscardObserver() {
+    const root = this._findScrollContainer(this.host);
+    this._discardObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) continue;
+          const pr = this._rendererByWrapper.get(entry.target);
+          if (pr?.isRendered) pr.discard();
+        }
+      },
+      { root, rootMargin: "1500px" }
+    );
+    for (const pr of this.renderers) this._discardObserver.observe(pr.wrapper);
   }
 
   _findScrollContainer(el) {
@@ -108,7 +135,7 @@ export class PdfViewer {
   async _refit(width) {
     await Promise.all(
       this.renderers.map((pr) => {
-        const scale = this._fitScaleFor(pr.page, width);
+        const scale = this._fitScaleFor(pr, width);
         pr.setSize({ scale });
         if (pr.isRendered) {
           return pr.render({ scale }).catch((e) => {
