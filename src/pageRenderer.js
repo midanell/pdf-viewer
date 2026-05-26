@@ -1,4 +1,4 @@
-import { TextLayer, setLayerDimensions } from "pdfjs-dist";
+import { TextLayer, AnnotationLayer, setLayerDimensions } from "pdfjs-dist";
 
 export class PageRenderer {
   constructor(pdf, pageNumber, options = {}) {
@@ -16,6 +16,11 @@ export class PageRenderer {
     this._textDiv = null;
     this._textLayer = null;
     this._textRendered = false;
+    this.annotationLayerEnabled = options.annotationLayer ?? true;
+    this.linkService = options.linkService ?? null;
+    this._annotDiv = null;
+    this._annotLayer = null;
+    this._annotRendered = false;
   }
 
   async render({ scale = 1.5 } = {}) {
@@ -60,8 +65,41 @@ export class PageRenderer {
       }
     }
 
+    let annotPromise = Promise.resolve();
+    if (this.annotationLayerEnabled && this.linkService) {
+      const annotViewport = viewport.clone({ dontFlip: true });
+      if (!this._annotRendered) {
+        this._annotDiv ??= this._createAnnotDiv();
+        this._annotLayer = new AnnotationLayer({
+          div: this._annotDiv,
+          page: this.page,
+          viewport: annotViewport,
+          accessibilityManager: null,
+          annotationCanvasMap: null,
+          annotationEditorUIManager: null,
+          structTreeLayer: null,
+        });
+        annotPromise = this.page.getAnnotations().then((annotations) =>
+          this._annotLayer
+            .render({
+              viewport: annotViewport,
+              div: this._annotDiv,
+              annotations,
+              page: this.page,
+              linkService: this.linkService,
+              renderForms: true,
+            })
+            .then(() => {
+              this._annotRendered = true;
+            })
+        );
+      } else {
+        this._annotLayer.update({ viewport: annotViewport });
+      }
+    }
+
     try {
-      await Promise.all([this._task.promise, textPromise]);
+      await Promise.all([this._task.promise, textPromise, annotPromise]);
     } finally {
       this._task = null;
     }
@@ -78,11 +116,22 @@ export class PageRenderer {
     return div;
   }
 
+  _createAnnotDiv() {
+    const div = document.createElement("div");
+    div.className = "annotationLayer";
+    this.wrapper.appendChild(div);
+    return div;
+  }
+
   async _cancelActive() {
     if (this._textLayer && !this._textRendered) {
       this._textLayer.cancel();
       this._textLayer = null;
       if (this._textDiv) this._textDiv.replaceChildren();
+    }
+    if (this._annotLayer && !this._annotRendered) {
+      this._annotLayer = null;
+      if (this._annotDiv) this._annotDiv.replaceChildren();
     }
     if (!this._task) return;
     const task = this._task;

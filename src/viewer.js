@@ -1,6 +1,7 @@
 import "./worker.js";
 import * as pdfjsLib from "pdfjs-dist";
 import { PageRenderer } from "./pageRenderer.js";
+import { createLinkService } from "./linkService.js";
 
 export class PdfViewer {
   constructor(host, options = {}) {
@@ -16,7 +17,8 @@ export class PdfViewer {
 
   async load(url) {
     this.pdf = await pdfjsLib.getDocument(url).promise;
-    const pr = new PageRenderer(this.pdf, 1);
+    this.linkService = createLinkService(this.pdf);
+    const pr = new PageRenderer(this.pdf, 1, { linkService: this.linkService });
     this.host.appendChild(pr.wrapper);
     this.renderers.push(pr);
 
