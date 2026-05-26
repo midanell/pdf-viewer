@@ -2,6 +2,7 @@ import "./worker.js";
 import * as pdfjsLib from "pdfjs-dist";
 import { PageRenderer } from "./pageRenderer.js";
 import { createLinkService } from "./linkService.js";
+import { PdfToolbar } from "./toolbar.js";
 
 const ZOOM_STEPS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0];
 
@@ -20,18 +21,13 @@ export class PdfViewer {
     this._resizeTimer = null;
     this._lastWidth = 0;
     this._scrollRoot = null;
-    this._toolbarEl = null;
-    this._zoomDisplay = null;
+    this._toolbar = null;
     this._lastWheelZoom = 0;
     this._currentPage = 1;
     this._pageRatios = new Map();
     this._pageObserver = null;
     this._scrollingTo = false;
     this._scrollingToTimer = null;
-    this._navInput = null;
-    this._navTotal = null;
-    this._prevBtn = null;
-    this._nextBtn = null;
     this._onWheel = (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
@@ -71,15 +67,27 @@ export class PdfViewer {
       this.host.appendChild(pr.wrapper);
     }
 
-    if (this._zoomControls) this._setupToolbar();
+    if (this._zoomControls) {
+      this._toolbar = new PdfToolbar(this.host, {
+        pageCount: this.pdf.numPages,
+        currentPage: this._currentPage,
+        scale: this._effectiveScale(),
+        onPrev: () => this.goToPage(this._currentPage - 1),
+        onNext: () => this.goToPage(this._currentPage + 1),
+        onGoToPage: (n) => this.goToPage(n),
+        onZoomIn: () => this.zoomIn(),
+        onZoomOut: () => this.zoomOut(),
+        onFitWidth: () => this.setZoom("fit-width"),
+      });
+    }
 
     await this.renderers[0].render();
-    this._updateZoomDisplay();
+    this._toolbar?.updateZoom(this._effectiveScale());
 
     this._setupLazyObserver();
     this._setupDiscardObserver();
     this._setupPageObserver();
-    this._updateNavDisplay();
+    this._toolbar?.updateNav(this._currentPage, this.pdf.numPages);
     this._observe();
 
     (this._scrollRoot ?? window).addEventListener("wheel", this._onWheel, {
@@ -96,13 +104,8 @@ export class PdfViewer {
     clearTimeout(this._resizeTimer);
     clearTimeout(this._scrollingToTimer);
 
-    this._toolbarEl?.remove();
-    this._toolbarEl = null;
-    this._zoomDisplay = null;
-    this._navInput = null;
-    this._navTotal = null;
-    this._prevBtn = null;
-    this._nextBtn = null;
+    this._toolbar?.destroy();
+    this._toolbar = null;
 
     await Promise.all(this.renderers.map((pr) => pr.cancel().catch(() => {})));
     for (const pr of this.renderers) pr.wrapper.remove();
@@ -123,7 +126,7 @@ export class PdfViewer {
     const anchor = this._captureScrollAnchor();
     return this._applyScale().then(() => {
       this._restoreScrollAnchor(anchor);
-      this._updateZoomDisplay();
+      this._toolbar?.updateZoom(this._effectiveScale());
     });
   }
 
@@ -154,7 +157,7 @@ export class PdfViewer {
       this._scrollingTo = false;
     }, 600);
     this._currentPage = n;
-    this._updateNavDisplay();
+    this._toolbar?.updateNav(this._currentPage, this.pdf?.numPages ?? 0);
     pr.wrapper.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -207,149 +210,6 @@ export class PdfViewer {
     return Math.max(width / renderer.nativeWidth, 0.1);
   }
 
-  _setupToolbar() {
-    const toolbar = document.createElement("div");
-    toolbar.className = "pdf-viewer-toolbar";
-    Object.assign(toolbar.style, {
-      position: "sticky",
-      top: "0",
-      zIndex: "10",
-      display: "grid",
-      gridTemplateColumns: "1fr auto 1fr",
-      alignItems: "center",
-      gap: "4px",
-      padding: "6px 8px",
-      marginBottom: "12px",
-      background: "rgba(0,0,0,0.7)",
-      backdropFilter: "blur(4px)",
-      color: "#fff",
-      fontSize: "12px",
-      userSelect: "none",
-      width: "100%",
-      boxSizing: "border-box",
-    });
-
-    const btnBase = {
-      background: "rgba(255,255,255,0.15)",
-      border: "none",
-      color: "#fff",
-      borderRadius: "3px",
-      padding: "0 8px",
-      cursor: "pointer",
-      fontSize: "13px",
-      height: "26px",
-      boxSizing: "border-box",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-    };
-
-    const groupStyle = {
-      display: "flex",
-      alignItems: "center",
-      gap: "4px",
-    };
-
-    // --- Nav group (left cell) ---
-    const navGroup = document.createElement("div");
-    navGroup.className = "pdf-viewer-nav-group";
-    Object.assign(navGroup.style, groupStyle, { justifySelf: "start" });
-
-    const prev = document.createElement("button");
-    prev.className = "pdf-viewer-prev";
-    prev.title = "Previous page";
-    prev.textContent = "↑";
-    Object.assign(prev.style, btnBase);
-
-    const navInput = document.createElement("input");
-    navInput.className = "pdf-viewer-page-input";
-    navInput.type = "number";
-    navInput.min = "1";
-    navInput.max = String(this.pdf?.numPages ?? 1);
-    navInput.value = String(this._currentPage);
-    Object.assign(navInput.style, {
-      width: "44px",
-      height: "26px",
-      padding: "0 6px",
-      background: "rgba(0,0,0,0.4)",
-      color: "#fff",
-      border: "1px solid rgba(255,255,255,0.15)",
-      borderRadius: "3px",
-      fontSize: "13px",
-      textAlign: "center",
-      boxSizing: "border-box",
-      appearance: "textfield",
-      MozAppearance: "textfield",
-    });
-
-    const navTotal = document.createElement("span");
-    navTotal.className = "pdf-viewer-page-total";
-    navTotal.textContent = `/ ${this.pdf?.numPages ?? 0}`;
-    Object.assign(navTotal.style, { padding: "0 2px" });
-
-    const next = document.createElement("button");
-    next.className = "pdf-viewer-next";
-    next.title = "Next page";
-    next.textContent = "↓";
-    Object.assign(next.style, btnBase);
-
-    prev.onclick = () => this.goToPage(this._currentPage - 1);
-    next.onclick = () => this.goToPage(this._currentPage + 1);
-    navInput.onchange = () => {
-      const v = parseInt(navInput.value, 10);
-      if (Number.isFinite(v)) this.goToPage(v);
-      else navInput.value = String(this._currentPage);
-    };
-
-    navGroup.append(prev, navInput, navTotal, next);
-
-    // --- Zoom group (center cell) ---
-    const zoomGroup = document.createElement("div");
-    zoomGroup.className = "pdf-viewer-zoom-group";
-    Object.assign(zoomGroup.style, groupStyle);
-
-    const zoomOut = document.createElement("button");
-    zoomOut.className = "pdf-viewer-zoom-out";
-    zoomOut.title = "Zoom out";
-    zoomOut.textContent = "−";
-    Object.assign(zoomOut.style, btnBase);
-
-    const display = document.createElement("span");
-    display.className = "pdf-viewer-zoom-display";
-    Object.assign(display.style, { minWidth: "42px", textAlign: "center" });
-
-    const zoomIn = document.createElement("button");
-    zoomIn.className = "pdf-viewer-zoom-in";
-    zoomIn.title = "Zoom in";
-    zoomIn.textContent = "+";
-    Object.assign(zoomIn.style, btnBase);
-
-    const fitWidth = document.createElement("button");
-    fitWidth.className = "pdf-viewer-fit-width";
-    fitWidth.title = "Fit width";
-    fitWidth.textContent = "Fit width";
-    Object.assign(fitWidth.style, btnBase);
-
-    zoomOut.onclick = () => this.zoomOut();
-    zoomIn.onclick = () => this.zoomIn();
-    fitWidth.onclick = () => this.setZoom("fit-width");
-
-    zoomGroup.append(zoomOut, display, zoomIn, fitWidth);
-
-    // --- Right placeholder (keeps the center cell centered) ---
-    const rightSlot = document.createElement("div");
-
-    toolbar.append(navGroup, zoomGroup, rightSlot);
-    this.host.prepend(toolbar);
-
-    this._toolbarEl = toolbar;
-    this._zoomDisplay = display;
-    this._navInput = navInput;
-    this._navTotal = navTotal;
-    this._prevBtn = prev;
-    this._nextBtn = next;
-  }
-
   _setupPageObserver() {
     this._pageRatios = new Map();
     this._pageObserver = new IntersectionObserver(
@@ -369,31 +229,12 @@ export class PdfViewer {
         }
         if (bestPage !== this._currentPage) {
           this._currentPage = bestPage;
-          this._updateNavDisplay();
+          this._toolbar?.updateNav(this._currentPage, this.pdf?.numPages ?? 0);
         }
       },
       { root: this._scrollRoot, threshold: [0, 0.25, 0.5, 0.75, 1] }
     );
     for (const pr of this.renderers) this._pageObserver.observe(pr.wrapper);
-  }
-
-  _updateNavDisplay() {
-    if (!this._navInput) return;
-    const total = this.pdf?.numPages ?? 0;
-    this._navInput.value = String(this._currentPage);
-    this._navInput.max = String(total);
-    this._navTotal.textContent = `/ ${total}`;
-    const atFirst = this._currentPage <= 1;
-    const atLast = this._currentPage >= total;
-    this._prevBtn.style.opacity = atFirst ? "0.4" : "1";
-    this._prevBtn.style.pointerEvents = atFirst ? "none" : "auto";
-    this._nextBtn.style.opacity = atLast ? "0.4" : "1";
-    this._nextBtn.style.pointerEvents = atLast ? "none" : "auto";
-  }
-
-  _updateZoomDisplay() {
-    if (!this._zoomDisplay) return;
-    this._zoomDisplay.textContent = `${Math.round(this._effectiveScale() * 100)}%`;
   }
 
   _captureScrollAnchor() {
@@ -465,7 +306,9 @@ export class PdfViewer {
       clearTimeout(this._resizeTimer);
       this._resizeTimer = setTimeout(() => {
         if (this._zoomMode === "fit-width") {
-          this._applyScale().then(() => this._updateZoomDisplay());
+          this._applyScale().then(() =>
+            this._toolbar?.updateZoom(this._effectiveScale())
+          );
         }
       }, 150);
     });
