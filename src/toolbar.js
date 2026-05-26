@@ -1,3 +1,7 @@
+const TOGGLE_ON = "rgba(74,158,255,0.6)";
+const TOGGLE_OFF = "rgba(255,255,255,0.15)";
+const COMPACT_BREAK_POINT = 600;
+
 export class PdfToolbar {
   constructor(
     host,
@@ -59,6 +63,38 @@ export class PdfToolbar {
       display: "flex",
       alignItems: "center",
       gap: "4px",
+      position: "relative",
+    };
+
+    const createMoreButton = () => {
+      const b = document.createElement("button");
+      b.className = "pdf-viewer-more";
+      b.title = "More";
+      b.textContent = "...";
+      Object.assign(b.style, btnBase);
+      b.style.display = "none";
+      return b;
+    };
+
+    const createDropdown = () => {
+      const d = document.createElement("div");
+      d.className = "pdf-viewer-dropdown";
+      Object.assign(d.style, {
+        position: "absolute",
+        top: "100%",
+        right: "0",
+        marginTop: "4px",
+        display: "none",
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: "4px",
+        padding: "6px 8px",
+        background: "rgba(0,0,0,0.85)",
+        borderRadius: "4px",
+        zIndex: "11",
+        alignItems: "center",
+      });
+      return d;
     };
 
     // --- Nav group (left cell) ---
@@ -114,6 +150,10 @@ export class PdfToolbar {
 
     navGroup.append(prev, navInput, navTotal, next);
 
+    const navMore = createMoreButton();
+    const navDropdown = createDropdown();
+    navGroup.append(navMore, navDropdown);
+
     // --- Zoom group (center cell) ---
     const zoomGroup = document.createElement("div");
     zoomGroup.className = "pdf-viewer-zoom-group";
@@ -148,6 +188,10 @@ export class PdfToolbar {
 
     zoomGroup.append(zoomOut, display, zoomIn, fitWidth);
 
+    const zoomMore = createMoreButton();
+    const zoomDropdown = createDropdown();
+    zoomGroup.append(zoomMore, zoomDropdown);
+
     // --- Search group (right cell) ---
     const searchGroup = document.createElement("div");
     searchGroup.className = "pdf-viewer-search-group";
@@ -158,7 +202,7 @@ export class PdfToolbar {
     searchInput.type = "search";
     searchInput.placeholder = "Search…";
     Object.assign(searchInput.style, {
-      width: "160px",
+      width: "80px",
       height: "26px",
       padding: "0 8px",
       background: "rgba(0,0,0,0.4)",
@@ -204,8 +248,6 @@ export class PdfToolbar {
 
     let matchCase = false;
     let wholeWord = false;
-    const TOGGLE_ON = "rgba(74,158,255,0.6)";
-    const TOGGLE_OFF = "rgba(255,255,255,0.15)";
 
     const applyToggleStyle = (btn, active) => {
       btn.style.background = active ? TOGGLE_ON : TOGGLE_OFF;
@@ -250,8 +292,56 @@ export class PdfToolbar {
       nextMatchBtn,
     );
 
+    const searchMore = createMoreButton();
+    searchMore.style.display = "flex";
+    const searchDropdown = createDropdown();
+    searchGroup.append(searchMore, searchDropdown);
+
     toolbar.append(navGroup, zoomGroup, searchGroup);
     host.prepend(toolbar);
+
+    this._groupSpecs = [
+      {
+        container: navGroup,
+        fullOrder: [prev, navInput, navTotal, next],
+        essentials: [prev, next],
+        nonEssentials: [navInput, navTotal],
+        moreBtn: navMore,
+        dropdown: navDropdown,
+      },
+      {
+        container: zoomGroup,
+        fullOrder: [zoomOut, display, zoomIn, fitWidth],
+        essentials: [zoomOut, zoomIn],
+        nonEssentials: [display, fitWidth],
+        moreBtn: zoomMore,
+        dropdown: zoomDropdown,
+      },
+      {
+        container: searchGroup,
+        fullOrder: [searchInput, prevMatchBtn, counter, nextMatchBtn],
+        essentials: [searchInput],
+        nonEssentials: [prevMatchBtn, counter, nextMatchBtn],
+        alwaysInDropdown: [matchCaseBtn, wholeWordBtn],
+        moreBtn: searchMore,
+        dropdown: searchDropdown,
+      },
+    ];
+
+    for (const spec of this._groupSpecs) {
+      spec.moreBtn.onclick = () => this._toggleDropdown(spec);
+    }
+
+    this._compact = false;
+    this._setCompact(
+      toolbar.getBoundingClientRect().width < COMPACT_BREAK_POINT,
+    );
+
+    this._resizeObserver = new ResizeObserver((entries) => {
+      const w = entries[0].contentRect.width;
+      this._setCompact(w < COMPACT_BREAK_POINT);
+    });
+    this._resizeObserver.observe(toolbar);
 
     this._el = toolbar;
     this._zoomDisplay = display;
@@ -288,6 +378,54 @@ export class PdfToolbar {
     this._zoomDisplay.textContent = `${Math.round(scale * 100)}%`;
   }
 
+  _setCompact(compact) {
+    if (compact === this._compact) return;
+    this._compact = compact;
+    for (const spec of this._groupSpecs) this._relayoutGroup(spec);
+  }
+
+  _relayoutGroup(spec) {
+    while (spec.container.firstChild) {
+      spec.container.removeChild(spec.container.firstChild);
+    }
+    while (spec.dropdown.firstChild) {
+      spec.dropdown.removeChild(spec.dropdown.firstChild);
+    }
+    const alwaysDropdown = spec.alwaysInDropdown ?? [];
+    const hasAlways = alwaysDropdown.length > 0;
+    if (this._compact) {
+      for (const el of spec.essentials) spec.container.appendChild(el);
+      for (const el of alwaysDropdown) spec.dropdown.appendChild(el);
+      for (const el of spec.nonEssentials) spec.dropdown.appendChild(el);
+      spec.container.appendChild(spec.moreBtn);
+      spec.container.appendChild(spec.dropdown);
+      spec.moreBtn.style.display = "flex";
+      spec.dropdown.style.display = "none";
+      spec.moreBtn.style.background = TOGGLE_OFF;
+    } else {
+      for (const el of spec.fullOrder) spec.container.appendChild(el);
+      if (hasAlways) {
+        for (const el of alwaysDropdown) spec.dropdown.appendChild(el);
+        spec.container.appendChild(spec.moreBtn);
+        spec.container.appendChild(spec.dropdown);
+        spec.moreBtn.style.display = "flex";
+        spec.dropdown.style.display = "none";
+        spec.moreBtn.style.background = TOGGLE_OFF;
+      }
+    }
+  }
+
+  _toggleDropdown(spec) {
+    const open = spec.dropdown.style.display !== "none";
+    if (open) {
+      spec.dropdown.style.display = "none";
+      spec.moreBtn.style.background = TOGGLE_OFF;
+    } else {
+      spec.dropdown.style.display = "flex";
+      spec.moreBtn.style.background = TOGGLE_ON;
+    }
+  }
+
   updateSearch(current, total) {
     if (!this._searchCount) return;
     const hasQuery = this._searchInput?.value.trim().length > 0;
@@ -309,6 +447,8 @@ export class PdfToolbar {
 
   destroy() {
     clearTimeout(this._searchTimer);
+    this._resizeObserver?.disconnect();
+    this._resizeObserver = null;
     this._el?.remove();
     this._el = null;
     this._zoomDisplay = null;
