@@ -1,4 +1,4 @@
-export function createLinkService(pdf) {
+export function createLinkService(pdf, { onNavigate } = {}) {
   return {
     pagesCount: pdf?.numPages ?? 0,
     page: 1,
@@ -6,19 +6,30 @@ export function createLinkService(pdf) {
     isInPresentationMode: false,
     externalLinkEnabled: true,
 
-    // TODO: wire to scrolling when multi-page lands
-    async goToDestination(_dest) {},
-    goToPage(_val) {},
+    async goToDestination(dest) {
+      const destination =
+        typeof dest === "string" ? await pdf.getDestination(dest) : dest;
+      if (!destination) return;
+      const pageIndex = await pdf.getPageIndex(destination[0]);
+      onNavigate?.(pageIndex + 1);
+    },
+    goToPage(val) {
+      onNavigate?.(val);
+    },
 
     addLinkAttributes(link, url, newWindow) {
       link.href = url;
       link.target = newWindow ? "_blank" : "_self";
       link.rel = "noopener noreferrer";
     },
-    getDestinationHash(_dest) { return "#"; },
-    getAnchorUrl(hash) { return "#" + hash; },
-    setHash(_hash) {},
-    executeNamedAction(_action) {},
-    executeSetOCGState(_action) {},
+    getDestinationHash() {
+      return "#";
+    },
+    getAnchorUrl(hash) {
+      return "#" + hash;
+    },
+    setHash() {},
+    executeNamedAction() {},
+    executeSetOCGState() {},
   };
 }
