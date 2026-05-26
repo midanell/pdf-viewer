@@ -1,5 +1,7 @@
+import { TextLayer, setLayerDimensions } from "pdfjs-dist";
+
 export class PageRenderer {
-  constructor(pdf, pageNumber) {
+  constructor(pdf, pageNumber, options = {}) {
     this.pdf = pdf;
     this.pageNumber = pageNumber;
     this.page = null;
@@ -10,6 +12,10 @@ export class PageRenderer {
     this.canvas.style.display = "block";
     this.wrapper.appendChild(this.canvas);
     this._task = null;
+    this.textLayerEnabled = options.textLayer ?? true;
+    this._textDiv = null;
+    this._textLayer = null;
+    this._textRendered = false;
   }
 
   async render({ scale = 1.5 } = {}) {
@@ -32,8 +38,30 @@ export class PageRenderer {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     this._task = this.page.render({ canvasContext: ctx, viewport });
+
+    this.wrapper.style.setProperty("--scale-factor", String(viewport.scale));
+
+    let textPromise = Promise.resolve();
+    if (this.textLayerEnabled) {
+      if (!this._textRendered) {
+        this._textDiv ??= this._createTextDiv();
+        setLayerDimensions(this._textDiv, viewport);
+        this._textLayer = new TextLayer({
+          textContentSource: this.page.streamTextContent(),
+          container: this._textDiv,
+          viewport,
+        });
+        textPromise = this._textLayer.render().then(() => {
+          this._textRendered = true;
+        });
+      } else {
+        setLayerDimensions(this._textDiv, viewport);
+        this._textLayer.update({ viewport });
+      }
+    }
+
     try {
-      await this._task.promise;
+      await Promise.all([this._task.promise, textPromise]);
     } finally {
       this._task = null;
     }
@@ -43,7 +71,19 @@ export class PageRenderer {
     await this._cancelActive();
   }
 
+  _createTextDiv() {
+    const div = document.createElement("div");
+    div.className = "textLayer";
+    this.wrapper.appendChild(div);
+    return div;
+  }
+
   async _cancelActive() {
+    if (this._textLayer && !this._textRendered) {
+      this._textLayer.cancel();
+      this._textLayer = null;
+      if (this._textDiv) this._textDiv.replaceChildren();
+    }
     if (!this._task) return;
     const task = this._task;
     task.cancel();
