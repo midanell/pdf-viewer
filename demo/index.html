@@ -19,14 +19,14 @@
         justify-content: center;
         padding: 2rem;
       }
-      canvas {
-        display: block;
+      #pdf-host [data-page-number] {
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+        margin-bottom: 12px;
       }
     </style>
   </head>
   <body>
-    <canvas id="pdf-canvas"></canvas>
+    <div id="pdf-host"></div>
     <script type="module" src="./main.js"></script>
   </body>
 </html>
