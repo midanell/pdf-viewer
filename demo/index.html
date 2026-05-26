@@ -12,21 +12,68 @@
       }
     </script>
     <style>
+      *, *::before, *::after { box-sizing: border-box; }
+
       body {
         margin: 0;
+        height: 100vh;
+        display: grid;
+        grid-template-columns: 220px 6px 1fr;
+        grid-template-rows: 100%;
         background: #525659;
-        display: flex;
-        justify-content: center;
-        padding: 2rem;
+        color: #ddd;
+        font-family: sans-serif;
+        overflow: hidden;
       }
+
+      #sidebar {
+        background: #2d2f31;
+        padding: 1rem;
+        overflow: auto;
+        user-select: none;
+      }
+
+      #sidebar h1 {
+        margin: 0 0 0.5rem;
+        font-size: 0.9rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #aaa;
+      }
+
+      #divider {
+        background: #1a1b1d;
+        cursor: col-resize;
+        transition: background 0.1s;
+      }
+
+      #divider:hover,
+      #divider.dragging {
+        background: #4a9eff;
+      }
+
+      #main {
+        padding: 1rem;
+        overflow: auto;
+      }
+
       #pdf-host [data-page-number] {
+        display: block;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
         margin-bottom: 12px;
       }
     </style>
   </head>
   <body>
-    <div id="pdf-host"></div>
+    <aside id="sidebar">
+      <h1>PDF Viewer</h1>
+      <p style="font-size:0.8rem; color:#888; margin:0">Drag the divider to resize.</p>
+    </aside>
+    <div id="divider"></div>
+    <main id="main">
+      <div id="pdf-host"></div>
+    </main>
     <script type="module" src="./main.js"></script>
   </body>
 </html>
