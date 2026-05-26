@@ -4,6 +4,7 @@ import { PageRenderer } from "./pageRenderer.js";
 import { createLinkService } from "./linkService.js";
 import { PdfToolbar } from "./toolbar.js";
 import { PdfSearch } from "./search.js";
+import { PdfThumbnails } from "./thumbnails.js";
 
 const ZOOM_STEPS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0];
 
@@ -30,6 +31,10 @@ export class PdfViewer {
     this._scrollingTo = false;
     this._scrollingToTimer = null;
     this._search = null;
+    this._thumbnails = null;
+    this._thumbnailsActive = false;
+    this._contentRow = null;
+    this._pagesCol = null;
     this._onWheel = (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
@@ -59,6 +64,15 @@ export class PdfViewer {
 
     this._scrollRoot = this._findScrollContainer(this.host);
 
+    this._contentRow = document.createElement("div");
+    Object.assign(this._contentRow.style, { display: "flex", alignItems: "flex-start" });
+
+    this._pagesCol = document.createElement("div");
+    Object.assign(this._pagesCol.style, { flex: "1", minWidth: "0" });
+
+    this._contentRow.appendChild(this._pagesCol);
+    this.host.appendChild(this._contentRow);
+
     const width = this._measureContentWidth();
     this._lastWidth = width;
 
@@ -66,7 +80,7 @@ export class PdfViewer {
       pr.setSize({ scale: this._scaleFor(pr) });
       pr.wrapper.style.marginLeft = "auto";
       pr.wrapper.style.marginRight = "auto";
-      this.host.appendChild(pr.wrapper);
+      this._pagesCol.appendChild(pr.wrapper);
     }
 
     this._search = new PdfSearch(this.renderers, {
@@ -79,18 +93,27 @@ export class PdfViewer {
         currentPage: this._currentPage,
         scale: this._effectiveScale(),
         fitWidthActive: this._zoomMode === "fit-width",
+        thumbnailsActive: false,
         onPrev: () => this.goToPage(this._currentPage - 1),
         onNext: () => this.goToPage(this._currentPage + 1),
         onGoToPage: (n) => this.goToPage(n),
         onZoomIn: () => this.zoomIn(),
         onZoomOut: () => this.zoomOut(),
         onFitWidth: () => this.setZoom("fit-width"),
+        onThumbnails: () => this.toggleThumbnails(),
         onSearch: ({ query, matchCase, wholeWord }) =>
           this.search(query, { matchCase, wholeWord }),
         onPrevMatch: () => this.prevMatch(),
         onNextMatch: () => this.nextMatch(),
       });
     }
+
+    const topOffset = this._toolbar?._el.offsetHeight ?? 0;
+    this._thumbnails = new PdfThumbnails(this.renderers, {
+      onNavigate: (n) => this.goToPage(n),
+      topOffset,
+    });
+    this._contentRow.prepend(this._thumbnails.panel);
 
     await this.renderers[0].render();
     this._toolbar?.updateZoom(this._effectiveScale());
@@ -119,11 +142,17 @@ export class PdfViewer {
     this._toolbar = null;
     this._search?.destroy();
     this._search = null;
+    this._thumbnails?.destroy();
+    this._thumbnails = null;
 
     await Promise.all(this.renderers.map((pr) => pr.cancel().catch(() => {})));
     for (const pr of this.renderers) pr.wrapper.remove();
     this.renderers = [];
     this._rendererByWrapper.clear();
+
+    this._contentRow?.remove();
+    this._contentRow = null;
+    this._pagesCol = null;
 
     await this.pdf?.destroy();
     this.pdf = null;
@@ -172,6 +201,7 @@ export class PdfViewer {
     }, 600);
     this._currentPage = n;
     this._toolbar?.updateNav(this._currentPage, this.pdf?.numPages ?? 0);
+    this._thumbnails?.updateCurrentPage(n);
     pr.wrapper.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -193,6 +223,13 @@ export class PdfViewer {
 
   prevMatch() {
     return this._search?.prevMatch();
+  }
+
+  toggleThumbnails() {
+    this._thumbnailsActive = !this._thumbnailsActive;
+    if (this._thumbnailsActive) this._thumbnails?.show();
+    else this._thumbnails?.hide();
+    this._toolbar?.updateThumbnails(this._thumbnailsActive);
   }
 
   _effectiveScale() {
@@ -226,10 +263,11 @@ export class PdfViewer {
   }
 
   _measureContentWidth() {
-    const cs = getComputedStyle(this.host);
+    const target = this._pagesCol ?? this.host;
+    const cs = getComputedStyle(target);
     const padL = parseFloat(cs.paddingLeft) || 0;
     const padR = parseFloat(cs.paddingRight) || 0;
-    return this.host.clientWidth - padL - padR;
+    return target.clientWidth - padL - padR;
   }
 
   _fitScaleFor(renderer, width) {
@@ -256,6 +294,7 @@ export class PdfViewer {
         if (bestPage !== this._currentPage) {
           this._currentPage = bestPage;
           this._toolbar?.updateNav(this._currentPage, this.pdf?.numPages ?? 0);
+          this._thumbnails?.updateCurrentPage(this._currentPage);
         }
       },
       { root: this._scrollRoot, threshold: [0, 0.25, 0.5, 0.75, 1] }
@@ -340,6 +379,6 @@ export class PdfViewer {
         }
       }, 150);
     });
-    this._observer.observe(this.host);
+    this._observer.observe(this._pagesCol ?? this.host);
   }
 }

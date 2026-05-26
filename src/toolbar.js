@@ -10,12 +10,14 @@ export class PdfToolbar {
       currentPage = 1,
       scale = 1,
       fitWidthActive = true,
+      thumbnailsActive = false,
       onPrev,
       onNext,
       onGoToPage,
       onZoomIn,
       onZoomOut,
       onFitWidth,
+      onThumbnails,
       onSearch,
       onPrevMatch,
       onNextMatch,
@@ -104,6 +106,14 @@ export class PdfToolbar {
     navGroup.className = "pdf-viewer-nav-group";
     Object.assign(navGroup.style, groupStyle, { justifySelf: "start" });
 
+    const thumbnailsBtn = document.createElement("button");
+    thumbnailsBtn.className = "pdf-viewer-thumbnails";
+    thumbnailsBtn.title = "Toggle thumbnails";
+    thumbnailsBtn.textContent = "☰";
+    Object.assign(thumbnailsBtn.style, btnBase);
+    thumbnailsBtn.style.background = thumbnailsActive ? TOGGLE_ON : TOGGLE_OFF;
+    thumbnailsBtn.onclick = () => onThumbnails?.();
+
     const prev = document.createElement("button");
     prev.className = "pdf-viewer-prev";
     prev.title = "Previous page";
@@ -150,7 +160,7 @@ export class PdfToolbar {
       else navInput.value = String(this._currentPage);
     };
 
-    navGroup.append(prev, navInput, navTotal, next);
+    navGroup.append(thumbnailsBtn, prev, navInput, navTotal, next);
 
     const navMore = createMoreButton();
     const navDropdown = createDropdown();
@@ -306,8 +316,8 @@ export class PdfToolbar {
     this._groupSpecs = [
       {
         container: navGroup,
-        fullOrder: [prev, navInput, navTotal, next],
-        essentials: [prev, next],
+        fullOrder: [thumbnailsBtn, prev, navInput, navTotal, next],
+        essentials: [thumbnailsBtn, prev, next],
         nonEssentials: [navInput, navTotal],
         moreBtn: navMore,
         dropdown: navDropdown,
@@ -349,6 +359,7 @@ export class PdfToolbar {
     this._el = toolbar;
     this._zoomDisplay = display;
     this._fitWidthBtn = fitWidth;
+    this._thumbnailsBtn = thumbnailsBtn;
     this._navInput = navInput;
     this._navTotal = navTotal;
     this._prevBtn = prev;
@@ -385,6 +396,11 @@ export class PdfToolbar {
   updateFitWidth(active) {
     if (!this._fitWidthBtn) return;
     this._fitWidthBtn.style.background = active ? TOGGLE_ON : TOGGLE_OFF;
+  }
+
+  updateThumbnails(active) {
+    if (!this._thumbnailsBtn) return;
+    this._thumbnailsBtn.style.background = active ? TOGGLE_ON : TOGGLE_OFF;
   }
 
   _setCompact(compact) {
@@ -462,6 +478,7 @@ export class PdfToolbar {
     this._el = null;
     this._zoomDisplay = null;
     this._fitWidthBtn = null;
+    this._thumbnailsBtn = null;
     this._navInput = null;
     this._navTotal = null;
     this._prevBtn = null;
