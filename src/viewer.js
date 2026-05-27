@@ -5,6 +5,7 @@ import { createLinkService } from "./linkService.js";
 import { PdfToolbar } from "./toolbar.js";
 import { PdfSearch } from "./search.js";
 import { PdfThumbnails } from "./thumbnails.js";
+import { PdfLoading } from "./loading.js";
 
 const ZOOM_STEPS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0];
 
@@ -14,6 +15,7 @@ export class PdfViewer {
     this._zoomMode = options.sizing ?? "fit-width"; // "fit-width" | "explicit"
     this._explicitScale = options.scale ?? 1.5;
     this._zoomControls = options.zoomControls ?? true;
+    this._useCustomProgress = options.useCustomProgress ?? false;
     this.pdf = null;
     this.renderers = [];
     this._rendererByWrapper = new Map();
@@ -36,6 +38,7 @@ export class PdfViewer {
     this._contentRow = null;
     this._pagesCol = null;
     this._scrollWrapper = null;
+    this._loading = null;
     this._onWheel = (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
@@ -48,8 +51,24 @@ export class PdfViewer {
   }
 
   async load(url, options = {}) {
+    if (!this._useCustomProgress) {
+      this.host.style.position ||= "relative";
+      this._loading = new PdfLoading(this.host);
+    }
+    try {
+      return await this._loadInternal(url, options);
+    } finally {
+      this._loading?.destroy();
+      this._loading = null;
+    }
+  }
+
+  async _loadInternal(url, options = {}) {
     const loadingTask = pdfjsLib.getDocument(url);
-    if (options.onProgress) loadingTask.onProgress = options.onProgress;
+    loadingTask.onProgress = ({ loaded, total }) => {
+      this._loading?.update({ loaded, total });
+      options.onProgress?.({ loaded, total });
+    };
     this.pdf = await loadingTask.promise;
     this.linkService = createLinkService(this.pdf, {
       onNavigate: (n) => this.goToPage(n),
@@ -144,6 +163,8 @@ export class PdfViewer {
   }
 
   async destroy() {
+    this._loading?.destroy();
+    this._loading = null;
     (this._scrollRoot ?? window).removeEventListener("wheel", this._onWheel);
     this._observer?.disconnect();
     this._lazyObserver?.disconnect();
@@ -388,4 +409,5 @@ export class PdfViewer {
     });
     this._observer.observe(this._pagesCol ?? this.host);
   }
+
 }
