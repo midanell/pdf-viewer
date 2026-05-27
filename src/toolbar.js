@@ -29,15 +29,13 @@ export class PdfToolbar {
     const toolbar = document.createElement("div");
     toolbar.className = "pdf-viewer-toolbar";
     Object.assign(toolbar.style, {
-      position: "sticky",
-      top: "0",
+      flexShrink: "0",
       zIndex: "10",
       display: "grid",
       gridTemplateColumns: "1fr auto 1fr",
       alignItems: "center",
       gap: "4px",
       padding: "6px 8px",
-      marginBottom: "12px",
       background: "rgba(0,0,0,0.7)",
       backdropFilter: "blur(4px)",
       color: "#fff",

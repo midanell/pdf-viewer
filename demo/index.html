@@ -61,7 +61,14 @@
         width: 600px;
         flex-shrink: 0;
         padding: 1rem;
-        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+
+      #pdf-host {
+        flex: 1;
+        min-height: 0;
       }
 
       #pdf-host [data-page-number] {

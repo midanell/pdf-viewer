@@ -43,6 +43,8 @@ export class PageRenderer {
     const cssH = Math.floor(viewport.height);
     this.wrapper.style.width = `${cssW}px`;
     this.wrapper.style.height = `${cssH}px`;
+    this.canvas.style.width = `${cssW}px`;
+    this.canvas.style.height = `${cssH}px`;
     this.wrapper.style.setProperty("--scale-factor", String(scale));
   }
 

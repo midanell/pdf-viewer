@@ -35,6 +35,7 @@ export class PdfViewer {
     this._thumbnailsActive = false;
     this._contentRow = null;
     this._pagesCol = null;
+    this._scrollWrapper = null;
     this._onWheel = (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
@@ -62,29 +63,10 @@ export class PdfViewer {
     );
     this._rendererByWrapper = new Map(this.renderers.map((pr) => [pr.wrapper, pr]));
 
-    this._scrollRoot = this._findScrollContainer(this.host);
-
-    this._contentRow = document.createElement("div");
-    Object.assign(this._contentRow.style, { display: "flex", alignItems: "flex-start" });
-
-    this._pagesCol = document.createElement("div");
-    Object.assign(this._pagesCol.style, { flex: "1", minWidth: "0" });
-
-    this._contentRow.appendChild(this._pagesCol);
-    this.host.appendChild(this._contentRow);
-
-    const width = this._measureContentWidth();
-    this._lastWidth = width;
-
-    for (const pr of this.renderers) {
-      pr.setSize({ scale: this._scaleFor(pr) });
-      pr.wrapper.style.marginLeft = "auto";
-      pr.wrapper.style.marginRight = "auto";
-      this._pagesCol.appendChild(pr.wrapper);
-    }
-
-    this._search = new PdfSearch(this.renderers, {
-      onUpdate: (cur, tot) => this._toolbar?.updateSearch(cur, tot),
+    Object.assign(this.host.style, {
+      display: "flex",
+      flexDirection: "column",
+      overflow: "hidden",
     });
 
     if (this._zoomControls) {
@@ -108,10 +90,42 @@ export class PdfViewer {
       });
     }
 
-    const topOffset = this._toolbar?._el.offsetHeight ?? 0;
+    this._scrollWrapper = document.createElement("div");
+    Object.assign(this._scrollWrapper.style, {
+      flex: "1",
+      minHeight: "0",
+      overflow: "auto",
+      width: "100%",
+    });
+    this.host.appendChild(this._scrollWrapper);
+    this._scrollRoot = this._scrollWrapper;
+
+    this._contentRow = document.createElement("div");
+    Object.assign(this._contentRow.style, { display: "flex", alignItems: "flex-start" });
+
+    this._pagesCol = document.createElement("div");
+    Object.assign(this._pagesCol.style, { flex: "1", minWidth: "0" });
+
+    this._contentRow.appendChild(this._pagesCol);
+    this._scrollWrapper.appendChild(this._contentRow);
+
+    const width = this._measureContentWidth();
+    this._lastWidth = width;
+
+    for (const pr of this.renderers) {
+      pr.setSize({ scale: this._scaleFor(pr) });
+      pr.wrapper.style.marginLeft = "auto";
+      pr.wrapper.style.marginRight = "auto";
+      this._pagesCol.appendChild(pr.wrapper);
+    }
+
+    this._search = new PdfSearch(this.renderers, {
+      onUpdate: (cur, tot) => this._toolbar?.updateSearch(cur, tot),
+    });
+
     this._thumbnails = new PdfThumbnails(this.renderers, {
       onNavigate: (n) => this.goToPage(n),
-      topOffset,
+      topOffset: 0,
     });
     this._contentRow.prepend(this._thumbnails.panel);
 
@@ -153,6 +167,9 @@ export class PdfViewer {
     this._contentRow?.remove();
     this._contentRow = null;
     this._pagesCol = null;
+    this._scrollWrapper?.remove();
+    this._scrollWrapper = null;
+    this._scrollRoot = null;
 
     await this.pdf?.destroy();
     this.pdf = null;
@@ -351,16 +368,6 @@ export class PdfViewer {
       { root: this._scrollRoot, rootMargin: "1500px" }
     );
     for (const pr of this.renderers) this._discardObserver.observe(pr.wrapper);
-  }
-
-  _findScrollContainer(el) {
-    let cur = el.parentElement;
-    while (cur && cur !== document.body) {
-      const oy = getComputedStyle(cur).overflowY;
-      if (oy === "auto" || oy === "scroll" || oy === "overlay") return cur;
-      cur = cur.parentElement;
-    }
-    return null;
   }
 
   _observe() {
