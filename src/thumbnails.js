@@ -2,7 +2,7 @@ const THUMB_SCALE = 0.2;
 const HIGHLIGHT = "2px solid rgba(74,158,255,0.8)";
 
 export class PdfThumbnails {
-  constructor(renderers, { onNavigate, topOffset = 0 } = {}) {
+  constructor(renderers, { onNavigate } = {}) {
     this._onNavigate = onNavigate;
     this._currentPage = 1;
     this._rotation = 0;
@@ -18,10 +18,7 @@ export class PdfThumbnails {
     Object.assign(this._panel.style, {
       width: `${panelWidth}px`,
       flexShrink: "0",
-      alignSelf: "flex-start",
-      position: "sticky",
-      top: `${topOffset}px`,
-      maxHeight: `calc(100vh - ${topOffset}px)`,
+      height: "100%",
       overflowY: "auto",
       background: "rgba(0,0,0,0.07)",
       display: "none",

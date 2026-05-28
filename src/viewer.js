@@ -39,6 +39,7 @@ export class PdfViewer {
     this._contentRow = null;
     this._pagesCol = null;
     this._scrollWrapper = null;
+    this._bodyRow = null;
     this._loading = null;
     this._onWheel = (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
@@ -113,14 +114,23 @@ export class PdfViewer {
       });
     }
 
+    this._bodyRow = document.createElement("div");
+    Object.assign(this._bodyRow.style, {
+      flex: "1",
+      minHeight: "0",
+      display: "flex",
+      width: "100%",
+    });
+    this.host.appendChild(this._bodyRow);
+
     this._scrollWrapper = document.createElement("div");
     Object.assign(this._scrollWrapper.style, {
       flex: "1",
-      minHeight: "0",
+      minWidth: "0",
       overflow: "auto",
-      width: "100%",
+      height: "100%",
     });
-    this.host.appendChild(this._scrollWrapper);
+    this._bodyRow.appendChild(this._scrollWrapper);
     this._scrollRoot = this._scrollWrapper;
 
     this._contentRow = document.createElement("div");
@@ -148,9 +158,8 @@ export class PdfViewer {
 
     this._thumbnails = new PdfThumbnails(this.renderers, {
       onNavigate: (n) => this.goToPage(n),
-      topOffset: 0,
     });
-    this._contentRow.prepend(this._thumbnails.panel);
+    this._bodyRow.prepend(this._thumbnails.panel);
 
     await this.renderers[0].render();
     this._toolbar?.updateZoom(this._effectiveScale());
@@ -194,6 +203,8 @@ export class PdfViewer {
     this._pagesCol = null;
     this._scrollWrapper?.remove();
     this._scrollWrapper = null;
+    this._bodyRow?.remove();
+    this._bodyRow = null;
     this._scrollRoot = null;
 
     await this.pdf?.destroy();
