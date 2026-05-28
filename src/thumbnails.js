@@ -5,9 +5,12 @@ export class PdfThumbnails {
   constructor(renderers, { onNavigate, topOffset = 0 } = {}) {
     this._onNavigate = onNavigate;
     this._currentPage = 1;
+    this._rotation = 0;
 
     const firstViewport = renderers[0]?.page.getViewport({ scale: THUMB_SCALE });
-    const thumbW = firstViewport ? Math.floor(firstViewport.width) : 100;
+    const thumbW = firstViewport
+      ? Math.floor(Math.max(firstViewport.width, firstViewport.height))
+      : 100;
     const panelWidth = thumbW + 24;
 
     this._panel = document.createElement("div");
@@ -48,6 +51,30 @@ export class PdfThumbnails {
     this._panel.style.display = "none";
   }
 
+  setRotation(rotation) {
+    if (rotation === this._rotation) return;
+    this._rotation = rotation;
+    for (const item of this._items) {
+      const viewport = item.pr.page.getViewport({
+        scale: THUMB_SCALE,
+        rotation,
+      });
+      const w = Math.floor(viewport.width);
+      const h = Math.floor(viewport.height);
+      item.wrapper.style.width = `${w}px`;
+      item.wrapper.style.height = `${h}px`;
+      item.canvas.width = 0;
+      item.canvas.height = 0;
+      item.canvas.style.display = "none";
+      item.spinner.style.display = "block";
+      item.rendered = false;
+    }
+    this._observer.disconnect();
+    if (this._panel.style.display !== "none") {
+      for (const item of this._items) this._observer.observe(item.wrapper);
+    }
+  }
+
   updateCurrentPage(n) {
     const prev = this._items[this._currentPage - 1];
     if (prev) prev.wrapper.style.outline = "";
@@ -67,7 +94,10 @@ export class PdfThumbnails {
   }
 
   _createItem(pr) {
-    const viewport = pr.page.getViewport({ scale: THUMB_SCALE });
+    const viewport = pr.page.getViewport({
+      scale: THUMB_SCALE,
+      rotation: this._rotation,
+    });
     const w = Math.floor(viewport.width);
     const h = Math.floor(viewport.height);
 
@@ -133,7 +163,10 @@ export class PdfThumbnails {
     if (item.rendered) return;
     item.rendered = true;
     const { pr, canvas, spinner } = item;
-    const viewport = pr.page.getViewport({ scale: THUMB_SCALE });
+    const viewport = pr.page.getViewport({
+      scale: THUMB_SCALE,
+      rotation: this._rotation,
+    });
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.floor(viewport.width * dpr);
     canvas.height = Math.floor(viewport.height * dpr);

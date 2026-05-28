@@ -14,6 +14,7 @@ export class PdfViewer {
     this.host = host;
     this._zoomMode = options.sizing ?? "fit-width"; // "fit-width" | "explicit"
     this._explicitScale = options.scale ?? 1.5;
+    this._rotation = 0;
     this._zoomControls = options.zoomControls ?? true;
     this._useCustomProgress = options.useCustomProgress ?? false;
     this.pdf = null;
@@ -64,6 +65,7 @@ export class PdfViewer {
   }
 
   async _loadInternal(url, options = {}) {
+    this._rotation = 0;
     const loadingTask = pdfjsLib.getDocument(url);
     loadingTask.onProgress = ({ loaded, total }) => {
       this._loading?.update({ loaded, total });
@@ -101,6 +103,8 @@ export class PdfViewer {
         onZoomIn: () => this.zoomIn(),
         onZoomOut: () => this.zoomOut(),
         onFitWidth: () => this.setZoom("fit-width"),
+        onRotateCW: () => this.rotateClockwise(),
+        onRotateCCW: () => this.rotateCounterclockwise(),
         onThumbnails: () => this.toggleThumbnails(),
         onSearch: ({ query, matchCase, wholeWord }) =>
           this.search(query, { matchCase, wholeWord }),
@@ -132,7 +136,7 @@ export class PdfViewer {
     this._lastWidth = width;
 
     for (const pr of this.renderers) {
-      pr.setSize({ scale: this._scaleFor(pr) });
+      pr.setSize({ scale: this._scaleFor(pr), rotation: this._rotation });
       pr.wrapper.style.marginLeft = "auto";
       pr.wrapper.style.marginRight = "auto";
       this._pagesCol.appendChild(pr.wrapper);
@@ -227,6 +231,29 @@ export class PdfViewer {
     return { mode: this._zoomMode, scale: this._effectiveScale() };
   }
 
+  rotateClockwise() {
+    this._rotation = (this._rotation + 90) % 360;
+    return this._applyRotation();
+  }
+
+  rotateCounterclockwise() {
+    this._rotation = (this._rotation + 270) % 360;
+    return this._applyRotation();
+  }
+
+  getRotation() {
+    return this._rotation;
+  }
+
+  _applyRotation() {
+    const anchor = this._captureScrollAnchor();
+    return this._applyScale().then(() => {
+      this._thumbnails?.setRotation(this._rotation);
+      this._restoreScrollAnchor(anchor);
+      this._toolbar?.updateZoom(this._effectiveScale());
+    });
+  }
+
   goToPage(n) {
     const total = this.pdf?.numPages ?? 1;
     n = Math.max(1, Math.min(total, Math.floor(n)));
@@ -286,12 +313,13 @@ export class PdfViewer {
   }
 
   async _applyScale() {
+    const rotation = this._rotation;
     await Promise.all(
       this.renderers.map((pr) => {
         const scale = this._scaleFor(pr);
-        pr.setSize({ scale });
+        pr.setSize({ scale, rotation });
         if (pr.isRendered) {
-          return pr.render({ scale }).catch((e) => {
+          return pr.render({ scale, rotation }).catch((e) => {
             if (e?.name !== "RenderingCancelledException") console.error(e);
           });
         }
@@ -309,7 +337,7 @@ export class PdfViewer {
   }
 
   _fitScaleFor(renderer, width) {
-    return Math.max(width / renderer.nativeWidth, 0.1);
+    return Math.max(width / renderer.nativeWidthFor(this._rotation), 0.1);
   }
 
   _setupPageObserver() {

@@ -17,6 +17,8 @@ export class PdfToolbar {
       onZoomIn,
       onZoomOut,
       onFitWidth,
+      onRotateCW,
+      onRotateCCW,
       onThumbnails,
       onSearch,
       onPrevMatch,
@@ -169,6 +171,18 @@ export class PdfToolbar {
     zoomGroup.className = "pdf-viewer-zoom-group";
     Object.assign(zoomGroup.style, groupStyle);
 
+    const rotateCCW = document.createElement("button");
+    rotateCCW.className = "pdf-viewer-rotate-ccw";
+    rotateCCW.title = "Rotate counterclockwise";
+    rotateCCW.textContent = "↺";
+    Object.assign(rotateCCW.style, btnBase);
+
+    const rotateCW = document.createElement("button");
+    rotateCW.className = "pdf-viewer-rotate-cw";
+    rotateCW.title = "Rotate clockwise";
+    rotateCW.textContent = "↻";
+    Object.assign(rotateCW.style, btnBase);
+
     const zoomOut = document.createElement("button");
     zoomOut.className = "pdf-viewer-zoom-out";
     zoomOut.title = "Zoom out";
@@ -196,8 +210,10 @@ export class PdfToolbar {
     zoomOut.onclick = () => onZoomOut?.();
     zoomIn.onclick = () => onZoomIn?.();
     fitWidth.onclick = () => onFitWidth?.();
+    rotateCCW.onclick = () => onRotateCCW?.();
+    rotateCW.onclick = () => onRotateCW?.();
 
-    zoomGroup.append(zoomOut, display, zoomIn, fitWidth);
+    zoomGroup.append(rotateCCW, rotateCW, zoomOut, display, zoomIn, fitWidth);
 
     const zoomMore = createMoreButton();
     const zoomDropdown = createDropdown();
@@ -322,8 +338,8 @@ export class PdfToolbar {
       },
       {
         container: zoomGroup,
-        fullOrder: [zoomOut, display, zoomIn, fitWidth],
-        essentials: [zoomOut, zoomIn],
+        fullOrder: [rotateCCW, rotateCW, zoomOut, display, zoomIn, fitWidth],
+        essentials: [rotateCCW, rotateCW, zoomOut, zoomIn],
         nonEssentials: [display, fitWidth],
         moreBtn: zoomMore,
         dropdown: zoomDropdown,

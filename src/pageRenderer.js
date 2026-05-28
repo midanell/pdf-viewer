@@ -4,7 +4,9 @@ export class PageRenderer {
   constructor(page, options = {}) {
     this.page = page;
     this.pageNumber = page.pageNumber;
-    this.nativeWidth = page.getViewport({ scale: 1 }).width;
+    const nativeViewport = page.getViewport({ scale: 1 });
+    this.nativeWidth = nativeViewport.width;
+    this.nativeHeight = nativeViewport.height;
     this.wrapper = document.createElement("div");
     this.wrapper.dataset.pageNumber = String(this.pageNumber);
     this.wrapper.style.position = "relative";
@@ -16,7 +18,9 @@ export class PageRenderer {
     this.wrapper.appendChild(this._spinner);
     this._task = null;
     this._currentScale = null;
+    this._currentRotation = null;
     this._intendedScale = null;
+    this._intendedRotation = 0;
     this.textLayerEnabled = options.textLayer ?? true;
     this._textDiv = null;
     this._textLayer = null;
@@ -36,9 +40,14 @@ export class PageRenderer {
     return this._textDiv;
   }
 
-  setSize({ scale }) {
+  nativeWidthFor(rotation = 0) {
+    return rotation % 180 === 0 ? this.nativeWidth : this.nativeHeight;
+  }
+
+  setSize({ scale, rotation = this._intendedRotation ?? 0 }) {
     this._intendedScale = scale;
-    const viewport = this.page.getViewport({ scale });
+    this._intendedRotation = rotation;
+    const viewport = this.page.getViewport({ scale, rotation });
     const cssW = Math.floor(viewport.width);
     const cssH = Math.floor(viewport.height);
     this.wrapper.style.width = `${cssW}px`;
@@ -48,12 +57,22 @@ export class PageRenderer {
     this.wrapper.style.setProperty("--scale-factor", String(scale));
   }
 
-  async render({ scale = this._intendedScale ?? 1.5 } = {}) {
-    if (this._currentScale === scale && !this._task) return;
+  async render({
+    scale = this._intendedScale ?? 1.5,
+    rotation = this._intendedRotation ?? 0,
+  } = {}) {
+    if (
+      this._currentScale === scale &&
+      this._currentRotation === rotation &&
+      !this._task
+    ) {
+      return;
+    }
     this._intendedScale = scale;
+    this._intendedRotation = rotation;
     await this._cancelActive();
 
-    const viewport = this.page.getViewport({ scale });
+    const viewport = this.page.getViewport({ scale, rotation });
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const cssW = Math.floor(viewport.width);
     const cssH = Math.floor(viewport.height);
@@ -127,6 +146,7 @@ export class PageRenderer {
     try {
       await Promise.all([this._task.promise, textPromise, annotPromise]);
       this._currentScale = scale;
+      this._currentRotation = rotation;
       this._setSpinnerVisible(false);
       this.page.cleanup();
     } finally {
@@ -149,8 +169,12 @@ export class PageRenderer {
     this._textRendered = false;
     this._annotRendered = false;
     this._currentScale = null;
+    this._currentRotation = null;
     if (this._intendedScale != null) {
-      this.setSize({ scale: this._intendedScale });
+      this.setSize({
+        scale: this._intendedScale,
+        rotation: this._intendedRotation ?? 0,
+      });
     }
     this._setSpinnerVisible(true);
   }
