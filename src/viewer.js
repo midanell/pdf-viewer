@@ -17,9 +17,12 @@ export class PdfViewer {
     this._rotation = 0;
     this._zoomControls = options.zoomControls ?? true;
     this._useCustomProgress = options.useCustomProgress ?? false;
+    this._pageOrder = options.pageOrder ?? [];
+    this._hideUnordered = options.hideUnorderedPages ?? false;
     this.pdf = null;
     this.renderers = [];
     this._rendererByWrapper = new Map();
+    this._slotByRenderer = new Map();
     this._observer = null;
     this._lazyObserver = null;
     this._discardObserver = null;
@@ -74,16 +77,8 @@ export class PdfViewer {
     };
     this.pdf = await loadingTask.promise;
     this.linkService = createLinkService(this.pdf, {
-      onNavigate: (n) => this.goToPage(n),
+      onNavigate: (pdfPageNum) => this._goToPdfPage(pdfPageNum),
     });
-
-    const pages = await Promise.all(
-      Array.from({ length: this.pdf.numPages }, (_, i) => this.pdf.getPage(i + 1))
-    );
-    this.renderers = pages.map(
-      (page) => new PageRenderer(page, { linkService: this.linkService })
-    );
-    this._rendererByWrapper = new Map(this.renderers.map((pr) => [pr.wrapper, pr]));
 
     Object.assign(this.host.style, {
       display: "flex",
@@ -142,8 +137,26 @@ export class PdfViewer {
     this._contentRow.appendChild(this._pagesCol);
     this._scrollWrapper.appendChild(this._contentRow);
 
-    const width = this._measureContentWidth();
-    this._lastWidth = width;
+    this._lastWidth = this._measureContentWidth();
+
+    await this._buildVisiblePages();
+    this._observe();
+
+    (this._scrollRoot ?? window).addEventListener("wheel", this._onWheel, {
+      passive: false,
+    });
+  }
+
+  async _buildVisiblePages() {
+    await this._teardownPages();
+
+    const slots = this._computeSlots();
+    const pages = await Promise.all(slots.map((n) => this.pdf.getPage(n)));
+    this.renderers = pages.map(
+      (page) => new PageRenderer(page, { linkService: this.linkService }),
+    );
+    this._rendererByWrapper = new Map(this.renderers.map((pr) => [pr.wrapper, pr]));
+    this._slotByRenderer = new Map(this.renderers.map((pr, i) => [pr, i + 1]));
 
     for (const pr of this.renderers) {
       pr.setSize({ scale: this._scaleFor(pr), rotation: this._rotation });
@@ -160,19 +173,70 @@ export class PdfViewer {
       onNavigate: (n) => this.goToPage(n),
     });
     this._bodyRow.prepend(this._thumbnails.panel);
+    if (this._thumbnailsActive) this._thumbnails.show();
+    if (this._rotation !== 0) this._thumbnails.setRotation(this._rotation);
 
-    await this.renderers[0].render();
+    if (this.renderers[0]) {
+      await this.renderers[0].render();
+    }
     this._toolbar?.updateZoom(this._effectiveScale());
 
     this._setupLazyObserver();
     this._setupDiscardObserver();
     this._setupPageObserver();
-    this._toolbar?.updateNav(this._currentPage, this.pdf.numPages);
-    this._observe();
+    this._currentPage = 1;
+    this._toolbar?.updateNav(this._currentPage, this.renderers.length);
+    this._thumbnails?.updateCurrentPage(this._currentPage);
+  }
 
-    (this._scrollRoot ?? window).addEventListener("wheel", this._onWheel, {
-      passive: false,
-    });
+  async _teardownPages() {
+    if (!this.renderers.length) return;
+    this._lazyObserver?.disconnect();
+    this._discardObserver?.disconnect();
+    this._pageObserver?.disconnect();
+    this._lazyObserver = null;
+    this._discardObserver = null;
+    this._pageObserver = null;
+
+    this._search?.destroy();
+    this._search = null;
+    this._thumbnails?.destroy();
+    this._thumbnails = null;
+
+    await Promise.all(this.renderers.map((pr) => pr.cancel().catch(() => {})));
+    for (const pr of this.renderers) pr.wrapper.remove();
+    this.renderers = [];
+    this._rendererByWrapper.clear();
+    this._slotByRenderer.clear();
+    this._pageRatios.clear();
+  }
+
+  _computeSlots() {
+    const total = this.pdf.numPages;
+    const seen = new Set();
+    const reorder = [];
+    for (const raw of this._pageOrder ?? []) {
+      const n = Math.floor(Number(raw));
+      if (!Number.isFinite(n) || n < 1 || n > total) continue;
+      if (seen.has(n)) continue;
+      seen.add(n);
+      reorder.push(n);
+    }
+    if (this._hideUnordered) return reorder;
+    const natural = Array.from({ length: total }, (_, i) => i + 1);
+    return [...reorder, ...natural];
+  }
+
+  setPageOrder(order, opts = {}) {
+    this._pageOrder = order ?? [];
+    this._hideUnordered = !!opts.hideUnordered;
+    if (!this.pdf) return Promise.resolve();
+    return this._buildVisiblePages();
+  }
+
+  _goToPdfPage(pdfPageNum) {
+    const idx = this.renderers.findIndex((r) => r.pageNumber === pdfPageNum);
+    if (idx >= 0) this.goToPage(idx + 1);
   }
 
   async destroy() {
@@ -197,6 +261,7 @@ export class PdfViewer {
     for (const pr of this.renderers) pr.wrapper.remove();
     this.renderers = [];
     this._rendererByWrapper.clear();
+    this._slotByRenderer.clear();
 
     this._contentRow?.remove();
     this._contentRow = null;
@@ -266,7 +331,8 @@ export class PdfViewer {
   }
 
   goToPage(n) {
-    const total = this.pdf?.numPages ?? 1;
+    const total = this.renderers.length;
+    if (total === 0) return;
     n = Math.max(1, Math.min(total, Math.floor(n)));
     const pr = this.renderers[n - 1];
     if (!pr) return;
@@ -276,7 +342,7 @@ export class PdfViewer {
       this._scrollingTo = false;
     }, 600);
     this._currentPage = n;
-    this._toolbar?.updateNav(this._currentPage, this.pdf?.numPages ?? 0);
+    this._toolbar?.updateNav(this._currentPage, total);
     this._thumbnails?.updateCurrentPage(n);
     pr.wrapper.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -286,7 +352,7 @@ export class PdfViewer {
   }
 
   getPageCount() {
-    return this.pdf?.numPages ?? 0;
+    return this.renderers.length;
   }
 
   search(query, opts) {
@@ -357,7 +423,8 @@ export class PdfViewer {
       (entries) => {
         for (const entry of entries) {
           const pr = this._rendererByWrapper.get(entry.target);
-          if (pr) this._pageRatios.set(pr.pageNumber, entry.intersectionRatio);
+          const slot = pr ? this._slotByRenderer.get(pr) : undefined;
+          if (slot) this._pageRatios.set(slot, entry.intersectionRatio);
         }
         if (this._scrollingTo) return;
         let bestPage = 1;
@@ -370,7 +437,7 @@ export class PdfViewer {
         }
         if (bestPage !== this._currentPage) {
           this._currentPage = bestPage;
-          this._toolbar?.updateNav(this._currentPage, this.pdf?.numPages ?? 0);
+          this._toolbar?.updateNav(this._currentPage, this.renderers.length);
           this._thumbnails?.updateCurrentPage(this._currentPage);
         }
       },

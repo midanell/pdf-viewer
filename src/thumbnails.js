@@ -24,7 +24,7 @@ export class PdfThumbnails {
       display: "none",
     });
 
-    this._items = renderers.map((pr) => this._createItem(pr));
+    this._items = renderers.map((pr, i) => this._createItem(pr, i + 1));
     for (const item of this._items) this._panel.appendChild(item.wrapper);
 
     this._observer = new IntersectionObserver(
@@ -90,7 +90,7 @@ export class PdfThumbnails {
     this._items = [];
   }
 
-  _createItem(pr) {
+  _createItem(pr, slotIndex) {
     const viewport = pr.page.getViewport({
       scale: THUMB_SCALE,
       rotation: this._rotation,
@@ -100,6 +100,7 @@ export class PdfThumbnails {
 
     const wrapper = document.createElement("div");
     wrapper.dataset.pageNumber = String(pr.pageNumber);
+    wrapper.dataset.slotIndex = String(slotIndex);
     Object.assign(wrapper.style, {
       width: `${w}px`,
       height: `${h}px`,
@@ -129,7 +130,7 @@ export class PdfThumbnails {
     });
     wrapper.appendChild(label);
 
-    wrapper.onclick = () => this._onNavigate?.(pr.pageNumber);
+    wrapper.onclick = () => this._onNavigate?.(slotIndex);
     return { wrapper, canvas, spinner, pr, rendered: false };
   }
 
@@ -179,8 +180,8 @@ export class PdfThumbnails {
   _onIntersect(entries) {
     for (const entry of entries) {
       if (!entry.isIntersecting) continue;
-      const n = parseInt(entry.target.dataset.pageNumber, 10);
-      const item = this._items[n - 1];
+      const slotIndex = parseInt(entry.target.dataset.slotIndex, 10);
+      const item = this._items[slotIndex - 1];
       if (item) this._renderItem(item).catch(() => {});
     }
   }

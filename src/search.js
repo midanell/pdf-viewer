@@ -74,7 +74,8 @@ export class PdfSearch {
     const div = pr.textDiv;
     if (!div || !this._query) return;
     const re = this._buildRegex();
-    const pageIdx = pr.pageNumber - 1;
+    const pageIdx = this.renderers.indexOf(pr);
+    if (pageIdx < 0) return;
     const pageStart = this._pageStartIdx[pageIdx] ?? 0;
     let localIdx = 0;
 
