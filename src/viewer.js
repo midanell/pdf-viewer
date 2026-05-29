@@ -12,8 +12,10 @@ const ZOOM_STEPS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0];
 export class PdfViewer {
   constructor(host, options = {}) {
     this.host = host;
-    this._zoomMode = options.sizing ?? "fit-width"; // "fit-width" | "explicit"
-    this._explicitScale = options.scale ?? 1.5;
+    this._defaultZoomMode = options.sizing ?? "fit-width";
+    this._defaultScale = options.scale ?? 1.5;
+    this._zoomMode = this._defaultZoomMode; // "fit-width" | "explicit"
+    this._explicitScale = this._defaultScale;
     this._rotation = 0;
     this._zoomControls = options.zoomControls ?? true;
     this._useCustomProgress = options.useCustomProgress ?? false;
@@ -69,7 +71,10 @@ export class PdfViewer {
   }
 
   async _loadInternal(url, options = {}) {
+    if (this.pdf) await this._unload();
     this._rotation = 0;
+    this._zoomMode = this._defaultZoomMode;
+    this._explicitScale = this._defaultScale;
     const loadingTask = pdfjsLib.getDocument(url);
     loadingTask.onProgress = ({ loaded, total }) => {
       this._loading?.update({ loaded, total });
@@ -242,11 +247,19 @@ export class PdfViewer {
   async destroy() {
     this._loading?.destroy();
     this._loading = null;
+    await this._unload();
+  }
+
+  async _unload() {
     (this._scrollRoot ?? window).removeEventListener("wheel", this._onWheel);
     this._observer?.disconnect();
+    this._observer = null;
     this._lazyObserver?.disconnect();
+    this._lazyObserver = null;
     this._discardObserver?.disconnect();
+    this._discardObserver = null;
     this._pageObserver?.disconnect();
+    this._pageObserver = null;
     clearTimeout(this._resizeTimer);
     clearTimeout(this._scrollingToTimer);
 
@@ -262,6 +275,7 @@ export class PdfViewer {
     this.renderers = [];
     this._rendererByWrapper.clear();
     this._slotByRenderer.clear();
+    this._pageRatios.clear();
 
     this._contentRow?.remove();
     this._contentRow = null;
