@@ -21,6 +21,7 @@ export class PdfViewer {
     this._useCustomProgress = options.useCustomProgress ?? false;
     this._pageOrder = options.pageOrder ?? [];
     this._hideUnordered = options.hideUnorderedPages ?? false;
+    this._customAnnotations = options.customAnnotations ?? [];
     this.pdf = null;
     this.renderers = [];
     this._rendererByWrapper = new Map();
@@ -170,6 +171,8 @@ export class PdfViewer {
       this._pagesCol.appendChild(pr.wrapper);
     }
 
+    this._distributeCustomAnnotations();
+
     this._search = new PdfSearch(this.renderers, {
       onUpdate: (cur, tot) => this._toolbar?.updateSearch(cur, tot),
     });
@@ -237,6 +240,23 @@ export class PdfViewer {
     this._hideUnordered = !!opts.hideUnordered;
     if (!this.pdf) return Promise.resolve();
     return this._buildVisiblePages();
+  }
+
+  setCustomAnnotations(list) {
+    this._customAnnotations = list ?? [];
+    if (this.pdf) this._distributeCustomAnnotations();
+  }
+
+  _distributeCustomAnnotations() {
+    const list = Array.isArray(this._customAnnotations)
+      ? this._customAnnotations
+      : [];
+    for (const pr of this.renderers) {
+      const subset = list.filter(
+        (a) => a && (Math.floor(Number(a.page)) || 1) === pr.pageNumber,
+      );
+      pr.setCustomAnnotations(subset);
+    }
   }
 
   _goToPdfPage(pdfPageNum) {

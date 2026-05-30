@@ -1,5 +1,8 @@
 import { TextLayer, AnnotationLayer, setLayerDimensions } from "pdfjs-dist";
 
+const DEFAULT_CUSTOM_COLOR = "#ffd54a";
+const DEFAULT_CUSTOM_OPACITY = 0.35;
+
 export class PageRenderer {
   constructor(page, options = {}) {
     this.page = page;
@@ -30,6 +33,8 @@ export class PageRenderer {
     this._annotDiv = null;
     this._annotLayer = null;
     this._annotRendered = false;
+    this._customAnnotations = [];
+    this._customDiv = null;
   }
 
   get isRendered() {
@@ -55,6 +60,7 @@ export class PageRenderer {
     this.canvas.style.width = `${cssW}px`;
     this.canvas.style.height = `${cssH}px`;
     this.wrapper.style.setProperty("--scale-factor", String(scale));
+    this._placeCustomAnnotations();
   }
 
   async render({
@@ -191,6 +197,82 @@ export class PageRenderer {
     div.className = "annotationLayer";
     this.wrapper.appendChild(div);
     return div;
+  }
+
+  setCustomAnnotations(list) {
+    this._customAnnotations = Array.isArray(list)
+      ? list.filter((a) => a && typeof a === "object")
+      : [];
+    this._placeCustomAnnotations();
+  }
+
+  _createCustomDiv() {
+    const div = document.createElement("div");
+    div.className = "customAnnotationLayer";
+    Object.assign(div.style, {
+      position: "absolute",
+      inset: "0",
+      pointerEvents: "none",
+      zIndex: "4",
+    });
+    this.wrapper.appendChild(div);
+    return div;
+  }
+
+  _placeCustomAnnotations() {
+    if (!this._customAnnotations.length) {
+      this._customDiv?.replaceChildren();
+      return;
+    }
+    this._customDiv ??= this._createCustomDiv();
+    const rotation = ((this._intendedRotation ?? 0) % 360 + 360) % 360;
+    const rects = [];
+    for (const a of this._customAnnotations) {
+      const x = Number(a.x);
+      const y = Number(a.y);
+      const w = Number(a.width);
+      const h = Number(a.height);
+      if (![x, y, w, h].every(Number.isFinite)) continue;
+      // PDF-space (bottom-left origin) -> CSS top-left origin, unrotated unit square.
+      let left = x;
+      let top = 1 - y - h;
+      let cw = w;
+      let ch = h;
+      // Rotate the corners through the unit square, then take the bounding box.
+      const p1 = this._rotatePoint(left, top, rotation);
+      const p2 = this._rotatePoint(left + cw, top + ch, rotation);
+      left = Math.min(p1.u, p2.u);
+      top = Math.min(p1.v, p2.v);
+      cw = Math.abs(p2.u - p1.u);
+      ch = Math.abs(p2.v - p1.v);
+
+      const el = document.createElement("div");
+      Object.assign(el.style, {
+        position: "absolute",
+        left: `${left * 100}%`,
+        top: `${top * 100}%`,
+        width: `${cw * 100}%`,
+        height: `${ch * 100}%`,
+        background: a.color ?? DEFAULT_CUSTOM_COLOR,
+        opacity: String(a.opacity ?? DEFAULT_CUSTOM_OPACITY),
+        pointerEvents: "none",
+      });
+      rects.push(el);
+    }
+    this._customDiv.replaceChildren(...rects);
+  }
+
+  _rotatePoint(u, v, rotation) {
+    switch (rotation) {
+      case 90:
+        return { u: 1 - v, v: u };
+      case 180:
+        return { u: 1 - u, v: 1 - v };
+      case 270:
+        return { u: v, v: 1 - u };
+      default:
+        return { u, v };
+    }
   }
 
   _createSpinner() {
