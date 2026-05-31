@@ -58,6 +58,7 @@ The host element must have explicit dimensions (or be sized by CSS). The viewer 
 | `useCustomProgress` | `boolean` | `false` | Suppress the built-in loading overlay |
 | `pageOrder` | `number[]` | `[]` | Pages to promote to the front, in order |
 | `hideUnorderedPages` | `boolean` | `false` | Show only pages listed in `pageOrder` |
+| `margin` | `string` | `"12px"` | CSS length for vertical spacing around pages (top of the first page + bottom of every page) |
 
 ### `viewer.load(url, options?)`
 

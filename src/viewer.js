@@ -22,6 +22,7 @@ export class PdfViewer {
     this._pageOrder = options.pageOrder ?? [];
     this._hideUnordered = options.hideUnorderedPages ?? false;
     this._customAnnotations = options.customAnnotations ?? [];
+    this._pageMargin = options.margin ?? "12px";
     this.pdf = null;
     this.renderers = [];
     this._rendererByWrapper = new Map();
@@ -164,12 +165,14 @@ export class PdfViewer {
     this._rendererByWrapper = new Map(this.renderers.map((pr) => [pr.wrapper, pr]));
     this._slotByRenderer = new Map(this.renderers.map((pr, i) => [pr, i + 1]));
 
-    for (const pr of this.renderers) {
+    this.renderers.forEach((pr, i) => {
       pr.setSize({ scale: this._scaleFor(pr), rotation: this._rotation });
       pr.wrapper.style.marginLeft = "auto";
       pr.wrapper.style.marginRight = "auto";
+      pr.wrapper.style.marginBottom = this._pageMargin;
+      pr.wrapper.style.marginTop = i === 0 ? this._pageMargin : "0";
       this._pagesCol.appendChild(pr.wrapper);
-    }
+    });
 
     this._distributeCustomAnnotations();
 
