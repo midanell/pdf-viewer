@@ -44,7 +44,16 @@ Then mount the viewer:
 </script>
 ```
 
-The host element must have explicit dimensions (or be sized by CSS). The viewer fills it entirely and handles its own internal layout.
+The host element must have a **definite, bounded height** — a fixed height, `100vh`, or `height: 100%` where **every ancestor up to a fixed-height element also has a definite height**. The viewer fills the host entirely and handles its own internal layout, including scrolling.
+
+Two requirements are easy to miss:
+
+- **A `max-height` is not enough.** `height: 100%` does not resolve against an ancestor that only sets `max-height` — the host falls back to content height, grows to fit every page, and the toolbar scrolls out of view along with the pages.
+- **Do not put `overflow` / `overflow-y` on the host or any container around it.** The viewer installs its own internal scroll region and pins the toolbar above it. An outer scroller competes with that region and is what physically scrolls the toolbar off-screen.
+
+### Troubleshooting
+
+- **Toolbar scrolls away with the pages / becomes unreachable** — the host's height is not bounded (often a `max-height` instead of a definite `height`, or an ancestor without a definite height), and/or a container around the host has its own `overflow-y: auto`. Give the host a definite height chain and remove the outer `overflow`. To confirm the diagnosis, temporarily set the host to a hard `height: 600px`; if the toolbar then pins correctly, the height chain was the problem.
 
 ## API
 
