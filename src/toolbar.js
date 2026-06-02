@@ -359,7 +359,7 @@ export class PdfToolbar {
       spec.moreBtn.onclick = () => this._toggleDropdown(spec);
     }
 
-    this._compact = false;
+    this._compact = null;
     this._setCompact(
       toolbar.getBoundingClientRect().width < COMPACT_BREAK_POINT,
     );
