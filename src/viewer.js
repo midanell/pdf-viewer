@@ -122,6 +122,7 @@ export class PdfViewer {
       minHeight: "0",
       display: "flex",
       width: "100%",
+      padding: this._pageMargin,
     });
     this.host.appendChild(this._bodyRow);
 
@@ -169,8 +170,7 @@ export class PdfViewer {
       pr.setSize({ scale: this._scaleFor(pr), rotation: this._rotation });
       pr.wrapper.style.marginLeft = "auto";
       pr.wrapper.style.marginRight = "auto";
-      pr.wrapper.style.marginBottom = this._pageMargin;
-      pr.wrapper.style.marginTop = i === 0 ? this._pageMargin : "0";
+      pr.wrapper.style.marginBottom = i === array.length - 1 ? "0" : this._pageMargin;
       this._pagesCol.appendChild(pr.wrapper);
     });
 
