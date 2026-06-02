@@ -166,7 +166,7 @@ export class PdfViewer {
     this._rendererByWrapper = new Map(this.renderers.map((pr) => [pr.wrapper, pr]));
     this._slotByRenderer = new Map(this.renderers.map((pr, i) => [pr, i + 1]));
 
-    this.renderers.forEach((pr, i) => {
+    this.renderers.forEach((pr, i, array) => {
       pr.setSize({ scale: this._scaleFor(pr), rotation: this._rotation });
       pr.wrapper.style.marginLeft = "auto";
       pr.wrapper.style.marginRight = "auto";
