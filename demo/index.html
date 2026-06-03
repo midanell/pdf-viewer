@@ -13,7 +13,11 @@
       }
     </script>
     <style>
-      *, *::before, *::after { box-sizing: border-box; }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
 
       body {
         margin: 0;
@@ -58,9 +62,8 @@
 
       #main {
         position: relative;
-        width: 600px;
+        width: 800px;
         flex-shrink: 0;
-        padding: 1rem;
         display: flex;
         flex-direction: column;
         min-height: 0;
@@ -80,7 +83,9 @@
   <body>
     <aside id="sidebar">
       <h1>PDF Viewer</h1>
-      <p style="font-size:0.8rem; color:#888; margin:0">Drag the divider to resize.</p>
+      <p style="font-size: 0.8rem; color: #888; margin: 0">
+        Drag the divider to resize.
+      </p>
     </aside>
     <div id="divider"></div>
     <main id="main">
