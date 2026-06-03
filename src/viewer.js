@@ -57,6 +57,21 @@ export class PdfViewer {
       if (e.deltaY < 0) this.zoomIn();
       else if (e.deltaY > 0) this.zoomOut();
     };
+    this._onKeyDown = (e) => {
+      const key = e.key.toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && key === "f") {
+        if (!this.host.contains(document.activeElement)) return;
+        e.preventDefault();
+        this._toolbar?.focusSearch();
+        return;
+      }
+      if (key === "escape" && this._toolbar?.isSearchFocused()) {
+        e.preventDefault();
+        this._toolbar.clearSearch();
+        this.search("");
+        this._scrollRoot?.focus();
+      }
+    };
   }
 
   async load(url, options = {}) {
@@ -127,11 +142,13 @@ export class PdfViewer {
     this.host.appendChild(this._bodyRow);
 
     this._scrollWrapper = document.createElement("div");
+    this._scrollWrapper.tabIndex = -1;
     Object.assign(this._scrollWrapper.style, {
       flex: "1",
       minWidth: "0",
       overflow: "auto",
       height: "100%",
+      outline: "none",
     });
     this._bodyRow.appendChild(this._scrollWrapper);
     this._scrollRoot = this._scrollWrapper;
@@ -153,6 +170,7 @@ export class PdfViewer {
     (this._scrollRoot ?? window).addEventListener("wheel", this._onWheel, {
       passive: false,
     });
+    window.addEventListener("keydown", this._onKeyDown);
   }
 
   async _buildVisiblePages() {
@@ -275,6 +293,7 @@ export class PdfViewer {
 
   async _unload() {
     (this._scrollRoot ?? window).removeEventListener("wheel", this._onWheel);
+    window.removeEventListener("keydown", this._onKeyDown);
     this._observer?.disconnect();
     this._observer = null;
     this._lazyObserver?.disconnect();

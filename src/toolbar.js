@@ -484,6 +484,21 @@ export class PdfToolbar {
     dim(this._nextMatchBtn);
   }
 
+  focusSearch() {
+    this._searchInput?.focus();
+    this._searchInput?.select();
+  }
+
+  clearSearch() {
+    if (!this._searchInput) return;
+    this._searchInput.value = "";
+    clearTimeout(this._searchTimer);
+  }
+
+  isSearchFocused() {
+    return document.activeElement === this._searchInput;
+  }
+
   destroy() {
     clearTimeout(this._searchTimer);
     this._resizeObserver?.disconnect();
