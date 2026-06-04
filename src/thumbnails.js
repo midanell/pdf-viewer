@@ -172,7 +172,14 @@ export class PdfThumbnails {
     canvas.style.height = Math.floor(viewport.height) + "px";
     const ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    await pr.page.render({ canvasContext: ctx, viewport }).promise;
+    try {
+      await pr.page.render({ canvasContext: ctx, viewport }).promise;
+    } catch (e) {
+      // Allow a later intersection to retry (e.g. the shared page was
+      // cleaned up mid-render by the main PageRenderer).
+      item.rendered = false;
+      throw e;
+    }
     canvas.style.display = "block";
     spinner.style.display = "none";
   }

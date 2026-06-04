@@ -121,7 +121,7 @@ export class PageRenderer {
       const annotViewport = viewport.clone({ dontFlip: true });
       if (!this._annotRendered) {
         this._annotDiv ??= this._createAnnotDiv();
-        this._annotLayer = new AnnotationLayer({
+        const annotLayer = new AnnotationLayer({
           div: this._annotDiv,
           page: this.page,
           viewport: annotViewport,
@@ -130,8 +130,11 @@ export class PageRenderer {
           annotationEditorUIManager: null,
           structTreeLayer: null,
         });
-        annotPromise = this.page.getAnnotations().then((annotations) =>
-          this._annotLayer
+        this._annotLayer = annotLayer;
+        annotPromise = this.page.getAnnotations().then((annotations) => {
+          // Bail if a concurrent _cancelActive() dropped this layer.
+          if (this._annotLayer !== annotLayer) return;
+          return annotLayer
             .render({
               viewport: annotViewport,
               div: this._annotDiv,
@@ -142,8 +145,8 @@ export class PageRenderer {
             })
             .then(() => {
               this._annotRendered = true;
-            }),
-        );
+            });
+        });
       } else {
         this._annotLayer.update({ viewport: annotViewport });
       }

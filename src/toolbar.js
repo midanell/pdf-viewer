@@ -90,7 +90,7 @@ export class PdfToolbar {
         marginTop: "4px",
         display: "none",
         flexDirection: "row",
-        flexWrap: "no-wrap",
+        flexWrap: "nowrap",
         gap: "4px",
         padding: "6px 8px",
         background: "rgba(0,0,0,0.85)",

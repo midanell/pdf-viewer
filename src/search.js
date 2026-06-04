@@ -14,6 +14,9 @@ export class PdfSearch {
     this._total = 0;
     this._currentIdx = -1;
     this._currentMarkEl = null;
+    // Per-renderer text items, keyed by renderer index. Text content is
+    // immutable for the document's lifetime, so we fetch each page once.
+    this._textCache = new Map();
   }
 
   async search(query, { matchCase = false, wholeWord = false } = {}) {
@@ -32,13 +35,19 @@ export class PdfSearch {
       return;
     }
 
+    const re = this._buildRegex();
     const counts = await Promise.all(
-      this.renderers.map(async (pr) => {
-        const tc = await pr.page.getTextContent();
-        const text = tc.items.map((i) => i.str).join("");
-        const re = this._buildRegex();
-        const m = text.match(re);
-        return m ? m.length : 0;
+      this.renderers.map(async (pr, i) => {
+        const items = await this._getTextItems(pr, i);
+        // Count per-item to match applyToPage, which walks one text node
+        // (one item) at a time — a match spanning two items is not
+        // highlightable, so it must not be counted either.
+        let count = 0;
+        for (const str of items) {
+          const m = str.match(re);
+          if (m) count += m.length;
+        }
+        return count;
       })
     );
 
@@ -120,9 +129,22 @@ export class PdfSearch {
     }
   }
 
+  _getTextItems(pr, index) {
+    let cached = this._textCache.get(index);
+    if (!cached) {
+      cached = pr.page
+        .getTextContent()
+        .then((tc) => tc.items.map((it) => it.str));
+      // Cache the promise so overlapping searches share one worker fetch.
+      this._textCache.set(index, cached);
+    }
+    return cached;
+  }
+
   destroy() {
     this._clearAllMarks();
     this._currentMarkEl = null;
+    this._textCache.clear();
     this.renderers = [];
   }
 
