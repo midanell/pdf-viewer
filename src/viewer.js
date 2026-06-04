@@ -252,7 +252,10 @@ export class PdfViewer {
       reorder.push(n);
     }
     if (this._hideUnordered) return reorder;
-    const natural = Array.from({ length: total }, (_, i) => i + 1);
+    const natural = [];
+    for (let n = 1; n <= total; n++) {
+      if (!seen.has(n)) natural.push(n);
+    }
     return [...reorder, ...natural];
   }
 
