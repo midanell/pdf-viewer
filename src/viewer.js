@@ -1,4 +1,4 @@
-import "./worker.js";
+import { PDF_ASSET_URLS } from "./worker.js";
 import * as pdfjsLib from "pdfjs-dist";
 import { PageRenderer } from "./pageRenderer.js";
 import { createLinkService } from "./linkService.js";
@@ -92,7 +92,13 @@ export class PdfViewer {
     this._rotation = 0;
     this._zoomMode = this._defaultZoomMode;
     this._explicitScale = this._defaultScale;
-    const loadingTask = pdfjsLib.getDocument(url);
+    const src =
+      typeof url === "string" || url instanceof URL
+        ? { url, ...PDF_ASSET_URLS }
+        : url instanceof Uint8Array
+          ? { data: url, ...PDF_ASSET_URLS }
+          : { ...url, ...PDF_ASSET_URLS };
+    const loadingTask = pdfjsLib.getDocument(src);
     loadingTask.onProgress = ({ loaded, total }) => {
       this._loading?.update({ loaded, total });
       options.onProgress?.({ loaded, total });

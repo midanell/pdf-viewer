@@ -60,6 +60,7 @@ export class PageRenderer {
     this.canvas.style.width = `${cssW}px`;
     this.canvas.style.height = `${cssH}px`;
     this.wrapper.style.setProperty("--scale-factor", String(scale));
+    this.wrapper.style.setProperty("--total-scale-factor", String(scale));
     this._placeCustomAnnotations();
   }
 
@@ -96,6 +97,10 @@ export class PageRenderer {
     this._task = this.page.render({ canvasContext: ctx, viewport });
 
     this.wrapper.style.setProperty("--scale-factor", String(viewport.scale));
+    this.wrapper.style.setProperty(
+      "--total-scale-factor",
+      String(viewport.scale),
+    );
 
     let textPromise = Promise.resolve();
     if (this.textLayerEnabled) {
