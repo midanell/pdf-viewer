@@ -63,7 +63,7 @@ Two requirements are easy to miss:
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `sizing` | `"fit-width"` \| `"explicit"` | `"fit-width"` | Zoom mode on load |
+| `sizing` | `"fit-width"` \| `"fit-page"` \| `"explicit"` | `"fit-width"` | Zoom mode on load. `"fit-page"` fits each page's height to the viewport |
 | `scale` | `number` | `1.5` | Initial scale when `sizing` is `"explicit"` |
 | `zoomControls` | `boolean` | `true` | Whether to render the built-in toolbar |
 | `useCustomProgress` | `boolean` | `false` | Suppress the built-in loading overlay |
@@ -91,7 +91,8 @@ viewer.getPageCount()    // total number of visible pages (respects pageOrder)
 ### Zoom
 
 ```js
-viewer.setZoom("fit-width")  // fit to container width
+viewer.setZoom("fit-width")  // fit page width to container width
+viewer.setZoom("fit-page")   // fit page height to the viewport
 viewer.setZoom(1.5)          // explicit scale (72 DPI baseline)
 viewer.zoomIn()              // step through ZOOM_STEPS
 viewer.zoomOut()

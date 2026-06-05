@@ -51,6 +51,10 @@ export class PageRenderer {
     return rotation % 180 === 0 ? this.nativeWidth : this.nativeHeight;
   }
 
+  nativeHeightFor(rotation = 0) {
+    return rotation % 180 === 0 ? this.nativeHeight : this.nativeWidth;
+  }
+
   setSize({ scale, rotation = this._intendedRotation ?? 0 }) {
     this._intendedScale = scale;
     this._intendedRotation = rotation;

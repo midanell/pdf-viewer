@@ -34,6 +34,7 @@ export class PdfViewer {
     this._discardObserver = null;
     this._resizeTimer = null;
     this._lastWidth = 0;
+    this._lastHeight = 0;
     this._scrollRoot = null;
     this._toolbar = null;
     this._lastWheelZoom = 0;
@@ -132,6 +133,7 @@ export class PdfViewer {
         currentPage: this._currentPage,
         scale: this._effectiveScale(),
         fitWidthActive: this._zoomMode === "fit-width",
+        fitPageActive: this._zoomMode === "fit-page",
         thumbnailsActive: false,
         onPrev: () => this.goToPage(this._currentPage - 1),
         onNext: () => this.goToPage(this._currentPage + 1),
@@ -139,6 +141,7 @@ export class PdfViewer {
         onZoomIn: () => this.zoomIn(),
         onZoomOut: () => this.zoomOut(),
         onFitWidth: () => this.setZoom("fit-width"),
+        onFitPage: () => this.setZoom("fit-page"),
         onRotateCW: () => this.rotateClockwise(),
         onRotateCCW: () => this.rotateCounterclockwise(),
         onThumbnails: () => this.toggleThumbnails(),
@@ -181,6 +184,7 @@ export class PdfViewer {
     this._scrollWrapper.appendChild(this._contentRow);
 
     this._lastWidth = this._measureContentWidth();
+    this._lastHeight = this._scrollRoot.clientHeight;
 
     await this._buildVisiblePages();
     this._observe();
@@ -357,6 +361,8 @@ export class PdfViewer {
   setZoom(value) {
     if (value === "fit-width") {
       this._zoomMode = "fit-width";
+    } else if (value === "fit-page") {
+      this._zoomMode = "fit-page";
     } else {
       this._zoomMode = "explicit";
       this._explicitScale = value;
@@ -366,6 +372,7 @@ export class PdfViewer {
       this._restoreScrollAnchor(anchor);
       this._toolbar?.updateZoom(this._effectiveScale());
       this._toolbar?.updateFitWidth(this._zoomMode === "fit-width");
+      this._toolbar?.updateFitPage(this._zoomMode === "fit-page");
     });
   }
 
@@ -471,9 +478,10 @@ export class PdfViewer {
   }
 
   _scaleFor(renderer) {
-    return this._zoomMode === "fit-width"
-      ? this._fitScaleFor(renderer, this._lastWidth)
-      : this._explicitScale;
+    if (this._zoomMode === "fit-width")
+      return this._fitScaleFor(renderer, this._lastWidth);
+    if (this._zoomMode === "fit-page") return this._fitPageScaleFor(renderer);
+    return this._explicitScale;
   }
 
   async _applyScale() {
@@ -502,6 +510,12 @@ export class PdfViewer {
 
   _fitScaleFor(renderer, width) {
     return Math.max(width / renderer.nativeWidthFor(this._rotation), 0.1);
+  }
+
+  _fitPageScaleFor(renderer) {
+    const byHeight = this._lastHeight / renderer.nativeHeightFor(this._rotation);
+    const byWidth = this._fitScaleFor(renderer, this._lastWidth);
+    return Math.max(Math.min(byHeight, byWidth), 0.1);
   }
 
   _setupPageObserver() {
@@ -585,22 +599,42 @@ export class PdfViewer {
   }
 
   _observe() {
+    const widthTarget = this._pagesCol ?? this.host;
     this._observer = new ResizeObserver((entries) => {
-      const w =
-        entries[0].contentBoxSize?.[0]?.inlineSize ??
-        entries[0].contentRect.width;
-      if (Math.abs(w - this._lastWidth) < 1) return;
-      this._lastWidth = w;
+      let widthChanged = false;
+      let heightChanged = false;
+      for (const entry of entries) {
+        if (entry.target === widthTarget) {
+          const w =
+            entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
+          if (Math.abs(w - this._lastWidth) >= 1) {
+            this._lastWidth = w;
+            widthChanged = true;
+          }
+        } else if (entry.target === this._scrollRoot) {
+          const h =
+            entry.contentBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+          if (Math.abs(h - this._lastHeight) >= 1) {
+            this._lastHeight = h;
+            heightChanged = true;
+          }
+        }
+      }
+      const relevant =
+        (this._zoomMode === "fit-width" && widthChanged) ||
+        (this._zoomMode === "fit-page" && (heightChanged || widthChanged));
+      if (!relevant) return;
       clearTimeout(this._resizeTimer);
       this._resizeTimer = setTimeout(() => {
-        if (this._zoomMode === "fit-width") {
-          this._applyScale().then(() =>
-            this._toolbar?.updateZoom(this._effectiveScale())
-          );
-        }
+        this._applyScale().then(() =>
+          this._toolbar?.updateZoom(this._effectiveScale())
+        );
       }, 150);
     });
-    this._observer.observe(this._pagesCol ?? this.host);
+    this._observer.observe(widthTarget);
+    if (this._scrollRoot && this._scrollRoot !== widthTarget) {
+      this._observer.observe(this._scrollRoot);
+    }
   }
 
 }
