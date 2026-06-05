@@ -305,6 +305,12 @@ export class PdfToolbar {
       clearTimeout(this._searchTimer);
       this._searchTimer = setTimeout(triggerSearch, 250);
     };
+    searchInput.onkeydown = (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      if (e.shiftKey) onPrevMatch?.();
+      else onNextMatch?.();
+    };
 
     matchCaseBtn.onclick = () => {
       matchCase = !matchCase;

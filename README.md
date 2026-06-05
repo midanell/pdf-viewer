@@ -118,6 +118,8 @@ viewer.nextMatch()
 viewer.prevMatch()
 ```
 
+With the search input focused, `Enter` jumps to the next match and `Shift+Enter` to the previous one.
+
 ### Page ordering
 
 ```js
