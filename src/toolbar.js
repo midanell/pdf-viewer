@@ -229,7 +229,7 @@ export class PdfToolbar {
     searchInput.type = "search";
     searchInput.placeholder = "Search…";
     Object.assign(searchInput.style, {
-      width: "80px",
+      width: "100px",
       height: "26px",
       padding: "0 8px",
       background: "rgba(0,0,0,0.4)",
