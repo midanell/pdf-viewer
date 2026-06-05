@@ -1,6 +1,6 @@
 # pdf-viewer
 
-A lightweight, framework-free PDF viewer built on [Mozilla PDF.js](https://mozilla.github.io/pdf.js/) (`pdfjs-dist` v4). Drop a host element onto the page, call `load()`, and get a fully functional viewer with text selection, annotations, search, thumbnails, zoom, and rotation — all with no React, Vue, or other framework required.
+A lightweight, framework-free PDF viewer built on [Mozilla PDF.js](https://mozilla.github.io/pdf.js/) (`pdfjs-dist` v6). Drop a host element onto the page, call `load()`, and get a fully functional viewer with text selection, annotations, search, thumbnails, zoom, and rotation — all with no React, Vue, or other framework required.
 
 ## Features
 
@@ -22,6 +22,8 @@ npm install pdfjs-dist
 ```
 
 Copy the `src/` directory into your project. The viewer is plain ES modules with no build step required — serve it directly or bundle it with any tool that supports ES modules.
+
+The viewer resolves all PDF.js assets (CMaps, standard fonts, WebAssembly image decoders, ICC profiles) from `node_modules/pdfjs-dist` automatically via `import.meta.url`. No extra configuration is needed as long as `node_modules` is reachable from the server root.
 
 ## Quick start
 
@@ -141,7 +143,7 @@ await viewer.destroy()  // cancels all renders, frees memory, removes DOM
 |---|---|
 | `viewer.js` | Top-level `PdfViewer` class — orchestrates all subsystems |
 | `pageRenderer.js` | Per-page canvas + text + annotation rendering |
-| `worker.js` | Sets `GlobalWorkerOptions.workerSrc` once at import time |
+| `worker.js` | Sets `GlobalWorkerOptions.workerSrc` at import time; exports `PDF_ASSET_URLS` (cMaps, fonts, wasm, icc) |
 | `toolbar.js` | Imperative toolbar DOM with compact/full responsive layouts |
 | `search.js` | Full-text search over text layer spans |
 | `thumbnails.js` | Lazily rendered thumbnail sidebar |
@@ -152,8 +154,8 @@ await viewer.destroy()  // cancels all renders, frees memory, removes DOM
 
 Every page renders three stacked layers inside a `position: relative` wrapper:
 
-1. **Canvas** — pixel-accurate bitmap via `page.render()`, sized in physical pixels for retina (`canvas.width = cssWidth * dpr`) with a CSS transform anchor set via `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)`.
-2. **Text layer** — transparent `<span>` elements positioned over the canvas for text selection and search highlighting. The CSS variable `--scale-factor` is kept in sync so PDF.js text layer CSS sizes fonts correctly.
+1. **Canvas** — pixel-accurate bitmap via `page.render()`, sized in physical pixels for retina (`canvas.width = cssWidth * dpr`) with the DPR scale passed as the `transform` parameter to `page.render()`.
+2. **Text layer** — transparent `<span>` elements positioned over the canvas for text selection and search highlighting. Two CSS variables, `--scale-factor` and `--total-scale-factor`, are kept in sync on the wrapper so PDF.js text-layer CSS sizes fonts correctly (v6 switched from the former to the latter for font sizing).
 3. **Annotation layer** — hyperlinks, form widgets, and other interactive elements. The viewport is cloned with `dontFlip: true` so the annotation layer performs its own Y-axis flip independently of the canvas.
 
 All three layers share the same `viewport` object, ensuring pixel-perfect alignment.
