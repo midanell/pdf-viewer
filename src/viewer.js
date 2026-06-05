@@ -383,8 +383,9 @@ export class PdfViewer {
     this._bodyRow = null;
     this._scrollRoot = null;
 
-    await this.pdf?.destroy();
+    const pdf = this.pdf;
     this.pdf = null;
+    await pdf?.destroy();
   }
 
   setZoom(value) {
