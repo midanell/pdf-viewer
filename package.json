@@ -6,6 +6,6 @@
     "dev": "npx serve ."
   },
   "dependencies": {
-    "pdfjs-dist": "^4.10.38"
+    "pdfjs-dist": "6.0.227"
   }
 }
