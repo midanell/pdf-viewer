@@ -29,6 +29,7 @@ export class PdfViewer {
     this._cacheFullPdf = options.cacheFullPdf === true;
     this._cacheToken = 0;
     this.pdf = null;
+    this._loadingTask = null;
     this.renderers = [];
     this._rendererByWrapper = new Map();
     this._slotByRenderer = new Map();
@@ -114,12 +115,13 @@ export class PdfViewer {
         : url instanceof Uint8Array
           ? { data: url, ...PDF_ASSET_URLS }
           : { ...url, ...PDF_ASSET_URLS };
-    const loadingTask = pdfjsLib.getDocument(src);
-    loadingTask.onProgress = ({ loaded, total }) => {
+    this._loadingTask = pdfjsLib.getDocument(src);
+    this._loadingTask.onProgress = ({ loaded, total }) => {
       this._loading?.update({ loaded, total });
       options.onProgress?.({ loaded, total });
     };
-    this.pdf = await loadingTask.promise;
+    this.pdf = await this._loadingTask.promise;
+    this._loadingTask = null;
     this.linkService = createLinkService(this.pdf, {
       onNavigate: (pdfPageNum) => this._goToPdfPage(pdfPageNum),
     });
@@ -383,9 +385,10 @@ export class PdfViewer {
     this._bodyRow = null;
     this._scrollRoot = null;
 
-    const pdf = this.pdf;
+    const loadingTask = this._loadingTask;
+    this._loadingTask = null;
     this.pdf = null;
-    await pdf?.destroy();
+    await loadingTask?.destroy();
   }
 
   setZoom(value) {
