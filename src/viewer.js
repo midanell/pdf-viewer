@@ -26,6 +26,8 @@ export class PdfViewer {
     this._scrollBehavior =
       options.scrollBehavior === "instant" ? "instant" : "smooth";
     if (options.nativeTextSelection !== false) PdfViewer._injectSelectionStyle();
+    this._cacheFullPdf = options.cacheFullPdf === true;
+    this._cacheToken = 0;
     this.pdf = null;
     this.renderers = [];
     this._rendererByWrapper = new Map();
@@ -234,16 +236,41 @@ export class PdfViewer {
     }
     this._toolbar?.updateZoom(this._effectiveScale());
 
-    this._setupLazyObserver();
-    this._setupDiscardObserver();
     this._setupPageObserver();
+    if (this._cacheFullPdf) {
+      // Render and retain every page (no lazy/discard observers); the lazy
+      // observer is skipped so the eager pass owns all rendering (no races).
+      this._renderAllCached();
+    } else {
+      this._setupLazyObserver();
+      this._setupDiscardObserver();
+    }
     this._currentPage = 1;
     this._toolbar?.updateNav(this._currentPage, this.renderers.length);
     this._thumbnails?.updateCurrentPage(this._currentPage);
   }
 
+  async _renderAllCached() {
+    const token = ++this._cacheToken;
+    for (const pr of this.renderers) {
+      if (token !== this._cacheToken || !this.pdf) return;
+      try {
+        await pr.render({
+          scale: this._scaleFor(pr),
+          rotation: this._rotation,
+        });
+      } catch (e) {
+        if (e?.name !== "RenderingCancelledException") console.error(e);
+        continue;
+      }
+      if (token !== this._cacheToken) return;
+      this._search?.applyToPage(pr);
+    }
+  }
+
   async _teardownPages() {
     if (!this.renderers.length) return;
+    this._cacheToken++; // cancel any in-flight full-cache render pass
     this._lazyObserver?.disconnect();
     this._discardObserver?.disconnect();
     this._pageObserver?.disconnect();
@@ -319,6 +346,7 @@ export class PdfViewer {
   }
 
   async _unload() {
+    this._cacheToken++; // cancel any in-flight full-cache render pass
     (this._scrollRoot ?? window).removeEventListener("wheel", this._onWheel);
     window.removeEventListener("keydown", this._onKeyDown);
     this._observer?.disconnect();
@@ -487,6 +515,15 @@ export class PdfViewer {
 
   async _applyScale() {
     const rotation = this._rotation;
+    if (this._cacheFullPdf) {
+      // Lay out every page synchronously (so scroll-anchor restore is correct),
+      // then re-render all cached canvases at the new scale in the background.
+      for (const pr of this.renderers) {
+        pr.setSize({ scale: this._scaleFor(pr), rotation });
+      }
+      this._renderAllCached();
+      return;
+    }
     await Promise.all(
       this.renderers.map((pr) => {
         const scale = this._scaleFor(pr);

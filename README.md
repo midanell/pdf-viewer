@@ -72,6 +72,7 @@ Two requirements are easy to miss:
 | `margin` | `string` | `"12px"` | CSS length for vertical spacing around pages (top of the first page + bottom of every page) |
 | `scrollBehavior` | `"smooth"` \| `"instant"` | `"smooth"` | Scroll animation for next/prev page and next/prev search match navigation. `"instant"` jumps without animating. Changeable at runtime via `viewer.setScrollBehavior(...)`. |
 | `nativeTextSelection` | `boolean` | `true` | Restores native browser text-selection highlighting in the PDF text layer. `pdf_viewer.css` suppresses it for the full pdf.js viewer's custom selection system; this viewer injects a one-line `<style>` to re-enable it. Set to `false` to skip that injection. |
+| `cacheFullPdf` | `boolean` | `false` | Eagerly render **every** page at the current zoom and keep all canvases resident (disables lazy rendering and the discard-on-scroll behavior), so scrolling anywhere is instant. The cache re-renders on zoom/rotation and is freed on `destroy()`. Trades memory (one canvas per page) for speed — best for small/medium documents. |
 
 ### `viewer.load(url, options?)`
 
