@@ -202,8 +202,8 @@ export class PdfToolbar {
 
     const fitWidth = document.createElement("button");
     fitWidth.className = "pdf-viewer-fit-width";
-    fitWidth.title = "Fit width";
-    fitWidth.textContent = "Fit width";
+    fitWidth.title = "Fit to width";
+    fitWidth.textContent = "↔";
     Object.assign(fitWidth.style, btnBase);
     fitWidth.style.background = fitWidthActive ? TOGGLE_ON : TOGGLE_OFF;
 
