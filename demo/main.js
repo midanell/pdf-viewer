@@ -8,8 +8,17 @@ const viewer = new PdfViewer(host, {
     // page omitted -> defaults to page 1; bottom-left origin, default color
     { x: 0.1, y: 0.1, width: 0.3, height: 0.05 },
     // page 3, custom color + opacity, near the top of the page
-    { page: 3, x: 0.4, y: 0.8, width: 0.2, height: 0.1, color: "#4a9eff", opacity: 0.5 },
+    {
+      page: 3,
+      x: 0.4,
+      y: 0.8,
+      width: 0.2,
+      height: 0.1,
+      color: "#4a9eff",
+      opacity: 0.5,
+    },
   ],
+  scrollBehavior: "instant",
 });
 
 await viewer.load("./sample.pdf");

@@ -70,6 +70,7 @@ Two requirements are easy to miss:
 | `pageOrder` | `number[]` | `[]` | Pages to promote to the front, in order |
 | `hideUnorderedPages` | `boolean` | `false` | Show only pages listed in `pageOrder` |
 | `margin` | `string` | `"12px"` | CSS length for vertical spacing around pages (top of the first page + bottom of every page) |
+| `scrollBehavior` | `"smooth"` \| `"instant"` | `"smooth"` | Scroll animation for next/prev page and next/prev search match navigation. `"instant"` jumps without animating. Changeable at runtime via `viewer.setScrollBehavior(...)`. |
 
 ### `viewer.load(url, options?)`
 

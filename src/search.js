@@ -3,9 +3,10 @@ const MARK_BG_CURRENT = "rgba(255,140,0,0.85)";
 const MARK_STYLE_BASE = "color: inherit; padding: 0; border-radius: 2px;";
 
 export class PdfSearch {
-  constructor(renderers, { onUpdate } = {}) {
+  constructor(renderers, { onUpdate, scrollBehavior = "smooth" } = {}) {
     this.renderers = renderers;
     this._onUpdate = onUpdate;
+    this._scrollBehavior = scrollBehavior === "instant" ? "instant" : "smooth";
     this._query = "";
     this._matchCase = false;
     this._wholeWord = false;
@@ -77,6 +78,10 @@ export class PdfSearch {
 
   prevMatch() {
     return this._step(-1);
+  }
+
+  setScrollBehavior(behavior) {
+    this._scrollBehavior = behavior === "instant" ? "instant" : "smooth";
   }
 
   applyToPage(pr) {
@@ -170,7 +175,7 @@ export class PdfSearch {
     if (!pr) return;
 
     if (!pr.isRendered) {
-      pr.wrapper.scrollIntoView({ block: "start", behavior: "smooth" });
+      pr.wrapper.scrollIntoView({ block: "start", behavior: this._scrollBehavior });
       await pr.render().catch(() => {});
       if (this._query) this.applyToPage(pr);
     }
@@ -179,7 +184,7 @@ export class PdfSearch {
       `mark[data-match-index="${idx}"]`
     );
     this._setCurrentMark(mark);
-    mark?.scrollIntoView({ block: "center", behavior: "smooth" });
+    mark?.scrollIntoView({ block: "center", behavior: this._scrollBehavior });
     this._onUpdate?.(idx + 1, this._total);
   }
 

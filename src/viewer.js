@@ -23,6 +23,8 @@ export class PdfViewer {
     this._hideUnordered = options.hideUnorderedPages ?? false;
     this._customAnnotations = options.customAnnotations ?? [];
     this._pageMargin = options.margin ?? "12px";
+    this._scrollBehavior =
+      options.scrollBehavior === "instant" ? "instant" : "smooth";
     this.pdf = null;
     this.renderers = [];
     this._rendererByWrapper = new Map();
@@ -212,6 +214,7 @@ export class PdfViewer {
 
     this._search = new PdfSearch(this.renderers, {
       onUpdate: (cur, tot) => this._toolbar?.updateSearch(cur, tot),
+      scrollBehavior: this._scrollBehavior,
     });
 
     this._thumbnails = new PdfThumbnails(this.renderers, {
@@ -419,7 +422,16 @@ export class PdfViewer {
     this._currentPage = n;
     this._toolbar?.updateNav(this._currentPage, total);
     this._thumbnails?.updateCurrentPage(n);
-    pr.wrapper.scrollIntoView({ behavior: "smooth", block: "start" });
+    pr.wrapper.scrollIntoView({ behavior: this._scrollBehavior, block: "start" });
+  }
+
+  setScrollBehavior(behavior) {
+    this._scrollBehavior = behavior === "instant" ? "instant" : "smooth";
+    this._search?.setScrollBehavior(this._scrollBehavior);
+  }
+
+  getScrollBehavior() {
+    return this._scrollBehavior;
   }
 
   getCurrentPage() {
