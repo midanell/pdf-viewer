@@ -13,11 +13,7 @@
       }
     </script>
     <style>
-      *,
-      *::before,
-      *::after {
-        box-sizing: border-box;
-      }
+      *, *::before, *::after { box-sizing: border-box; }
 
       body {
         margin: 0;
@@ -29,24 +25,132 @@
         overflow: hidden;
       }
 
+      /* ── Sidebar ─────────────────────────────────────────── */
       #sidebar {
         flex: 1;
-        min-width: 150px;
+        min-width: 180px;
+        max-width: 280px;
         background: #2d2f31;
         padding: 1rem;
-        overflow: auto;
+        overflow-y: auto;
         user-select: none;
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
       }
 
-      #sidebar h1 {
-        margin: 0 0 0.5rem;
-        font-size: 0.9rem;
-        font-weight: 600;
-        letter-spacing: 0.04em;
+      .sidebar-title {
+        margin: 0;
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.07em;
         text-transform: uppercase;
-        color: #aaa;
+        color: #888;
       }
 
+      /* ── Control groups ──────────────────────────────────── */
+      .ctrl-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+      }
+
+      .ctrl-group-label {
+        font-size: 0.65rem;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #666;
+        border-bottom: 1px solid #3a3c3e;
+        padding-bottom: 0.25rem;
+      }
+
+      .ctrl-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+      }
+
+      .ctrl-row label {
+        font-size: 0.8rem;
+        color: #bbb;
+        flex: 1;
+      }
+
+      /* ── Toggle switch ───────────────────────────────────── */
+      .toggle {
+        position: relative;
+        display: inline-block;
+        width: 36px;
+        height: 20px;
+        flex-shrink: 0;
+      }
+      .toggle input { opacity: 0; width: 0; height: 0; }
+      .toggle-track {
+        position: absolute;
+        cursor: pointer;
+        inset: 0;
+        background: #484a4d;
+        border-radius: 20px;
+        transition: background 0.18s;
+      }
+      .toggle input:checked + .toggle-track { background: #4a9eff; }
+      .toggle-track::before {
+        content: "";
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        left: 3px;
+        top: 3px;
+        background: #fff;
+        border-radius: 50%;
+        transition: transform 0.18s;
+      }
+      .toggle input:checked + .toggle-track::before { transform: translateX(16px); }
+
+      /* ── Segmented control ───────────────────────────────── */
+      .seg {
+        display: flex;
+        background: #1e2022;
+        border-radius: 5px;
+        overflow: hidden;
+        flex-shrink: 0;
+      }
+      .seg input[type="radio"] { display: none; }
+      .seg label {
+        padding: 3px 8px;
+        font-size: 0.72rem;
+        color: #888;
+        cursor: pointer;
+        transition: background 0.15s, color 0.15s;
+        white-space: nowrap;
+        flex: 0;
+      }
+      .seg input[type="radio"]:checked + label {
+        background: #4a9eff;
+        color: #fff;
+      }
+
+      /* ── Text input ──────────────────────────────────────── */
+      .ctrl-input {
+        width: 100%;
+        background: #1e2022;
+        border: 1px solid #3a3c3e;
+        border-radius: 4px;
+        color: #ddd;
+        font-size: 0.78rem;
+        padding: 4px 7px;
+        outline: none;
+      }
+      .ctrl-input:focus { border-color: #4a9eff; }
+      .ctrl-hint {
+        font-size: 0.68rem;
+        color: #666;
+        margin-top: -0.25rem;
+      }
+
+      /* ── Divider ─────────────────────────────────────────── */
       #divider {
         width: 6px;
         flex-shrink: 0;
@@ -54,12 +158,9 @@
         cursor: col-resize;
         transition: background 0.1s;
       }
+      #divider:hover, #divider.dragging { background: #4a9eff; }
 
-      #divider:hover,
-      #divider.dragging {
-        background: #4a9eff;
-      }
-
+      /* ── Main/viewer ─────────────────────────────────────── */
       #main {
         position: relative;
         width: 800px;
@@ -69,28 +170,110 @@
         min-height: 0;
       }
 
-      #pdf-host {
-        flex: 1;
-        min-height: 0;
-      }
+      #pdf-host { flex: 1; min-height: 0; }
 
       #pdf-host [data-page-number] {
         display: block;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.5);
       }
     </style>
   </head>
   <body>
     <aside id="sidebar">
-      <h1>PDF Viewer</h1>
-      <p style="font-size: 0.8rem; color: #888; margin: 0">
-        Drag the divider to resize.
-      </p>
+      <h1 class="sidebar-title">PDF Viewer Demo</h1>
+
+      <!-- Rendering -->
+      <div class="ctrl-group">
+        <div class="ctrl-group-label">Rendering</div>
+
+        <div class="ctrl-row">
+          <label for="opt-cache">Cache full PDF</label>
+          <label class="toggle">
+            <input type="checkbox" id="opt-cache" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+
+        <div class="ctrl-row">
+          <label>Sizing</label>
+          <div class="seg">
+            <input type="radio" name="sizing" id="sz-fw" value="fit-width" checked />
+            <label for="sz-fw">Fit width</label>
+            <input type="radio" name="sizing" id="sz-fp" value="fit-page" />
+            <label for="sz-fp">Fit page</label>
+            <input type="radio" name="sizing" id="sz-ex" value="explicit" />
+            <label for="sz-ex">Scale</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation -->
+      <div class="ctrl-group">
+        <div class="ctrl-group-label">Navigation</div>
+
+        <div class="ctrl-row">
+          <label>Scroll</label>
+          <div class="seg">
+            <input type="radio" name="scroll" id="sc-sm" value="smooth" checked />
+            <label for="sc-sm">Smooth</label>
+            <input type="radio" name="scroll" id="sc-in" value="instant" />
+            <label for="sc-in">Instant</label>
+          </div>
+        </div>
+
+        <div class="ctrl-row">
+          <label for="opt-zoom-ctrl">Zoom controls</label>
+          <label class="toggle">
+            <input type="checkbox" id="opt-zoom-ctrl" checked />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Page order -->
+      <div class="ctrl-group">
+        <div class="ctrl-group-label">Page order</div>
+
+        <div>
+          <input
+            type="text"
+            id="opt-page-order"
+            class="ctrl-input"
+            value="3,4,66,55"
+            placeholder="e.g. 3,1,2"
+          />
+          <p class="ctrl-hint">Comma-separated page numbers to promote</p>
+        </div>
+
+        <div class="ctrl-row">
+          <label for="opt-hide-unordered">Hide unordered pages</label>
+          <label class="toggle">
+            <input type="checkbox" id="opt-hide-unordered" />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Text -->
+      <div class="ctrl-group">
+        <div class="ctrl-group-label">Text</div>
+
+        <div class="ctrl-row">
+          <label for="opt-native-sel">Native text selection</label>
+          <label class="toggle">
+            <input type="checkbox" id="opt-native-sel" checked />
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+      </div>
     </aside>
+
     <div id="divider"></div>
+
     <main id="main">
       <div id="pdf-host"></div>
     </main>
+
     <script type="module" src="./main.js"></script>
   </body>
 </html>
