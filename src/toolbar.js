@@ -212,7 +212,7 @@ export class PdfToolbar {
     const fitPage = document.createElement("button");
     fitPage.className = "pdf-viewer-fit-page";
     fitPage.title = "Fit to page";
-    fitPage.textContent = "↕";
+    fitPage.textContent = "↕︎";
     Object.assign(fitPage.style, btnBase);
     fitPage.style.background = fitPageActive ? TOGGLE_ON : TOGGLE_OFF;
 
