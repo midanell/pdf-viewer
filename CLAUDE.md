@@ -122,18 +122,25 @@ await renderTask.promise;
 
 ### CSS scale variables on the page wrapper
 
-v6's `pdf_viewer.css` sizes text-layer fonts and annotation popups through two CSS custom properties.
-**Both must be set on the page wrapper element whenever scale changes**, because `pdf_viewer.css` only
-defines `--total-scale-factor` on `.pdfViewer .page` — a class structure custom viewers don't use:
+v6's `pdf_viewer.css` sizes the text layer and annotation popups through several CSS custom properties
+that it only *defines* on `.pdfViewer .page` — a class structure custom viewers don't use. You must set
+them on your own page wrapper or text rendering breaks. Two are scale-dependent (set whenever scale
+changes); two are constants (set once):
 
 ```js
+// scale-dependent — set on every render/resize:
 wrapper.style.setProperty("--scale-factor", String(viewport.scale));
 wrapper.style.setProperty("--total-scale-factor", String(viewport.scale));
+
+// constants — set once (e.g. when creating the wrapper):
+wrapper.style.setProperty("--scale-round-x", "1px");
+wrapper.style.setProperty("--scale-round-y", "1px");
 ```
 
 - `--scale-factor` is still used by some annotation inline styles.
 - `--total-scale-factor` drives the text-layer font-size calc chain in v6 (`--text-scale-factor → --total-scale-factor`). Without it, all text-layer `calc()` expressions are invalid, fonts collapse, and selection highlights misalign.
-- Set both on the wrapper *before* constructing or updating the `TextLayer`. One call per render/resize covers both layers since the wrapper is their common ancestor.
+- `--scale-round-x` / `--scale-round-y` are the rounding interval in `setLayerDimensions`' layer sizing: `round(down, var(--total-scale-factor) * Npx, var(--scale-round-x))`. If undefined, the `round()` is invalid, the layer's `width`/`height` are dropped, and the `position:absolute; inset:0` text layer stretches to the wrapper size. This looks fine at rotation 0 (wrapper == native size) but **misaligns on rotation 90/270** (wrapper == swapped size), causing the text layer and search highlights to drift to the original-layout position.
+- Set the scale-dependent vars on the wrapper *before* constructing or updating the `TextLayer`. One call per render/resize covers both layers since the wrapper is their common ancestor.
 
 ### Text layer
 

@@ -14,6 +14,8 @@ export class PageRenderer {
     this.wrapper.dataset.pageNumber = String(this.pageNumber);
     this.wrapper.style.position = "relative";
     this.wrapper.style.backgroundColor = "#DDD";
+    this.wrapper.style.setProperty("--scale-round-x", "1px");
+    this.wrapper.style.setProperty("--scale-round-y", "1px");
     this.canvas = document.createElement("canvas");
     this.canvas.style.display = "block";
     this.wrapper.appendChild(this.canvas);
@@ -233,7 +235,7 @@ export class PageRenderer {
       return;
     }
     this._customDiv ??= this._createCustomDiv();
-    const rotation = ((this._intendedRotation ?? 0) % 360 + 360) % 360;
+    const rotation = (((this._intendedRotation ?? 0) % 360) + 360) % 360;
     const rects = [];
     for (const a of this._customAnnotations) {
       const x = Number(a.x);
