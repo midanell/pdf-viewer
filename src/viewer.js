@@ -65,6 +65,16 @@ export class PdfViewer {
         this._toolbar?.focusSearch();
         return;
       }
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        (key === "+" || key === "=" || key === "-" || key === "_")
+      ) {
+        if (!this.host.contains(document.activeElement)) return;
+        e.preventDefault();
+        if (key === "-" || key === "_") this.zoomOut();
+        else this.zoomIn();
+        return;
+      }
       if (key === "escape" && this._toolbar?.isSearchFocused()) {
         e.preventDefault();
         this._toolbar.clearSearch();

@@ -97,7 +97,7 @@ viewer.zoomOut()
 viewer.getZoom()             // { mode, scale }
 ```
 
-Ctrl/Cmd+scroll also triggers zoom.
+Ctrl/Cmd+scroll also triggers zoom, as do the keyboard shortcuts `Ctrl/Cmd` + `+` / `=` (zoom in) and `Ctrl/Cmd` + `-` (zoom out) while the viewer is focused.
 
 ### Rotation
 
