@@ -71,6 +71,7 @@ Two requirements are easy to miss:
 | `hideUnorderedPages` | `boolean` | `false` | Show only pages listed in `pageOrder` |
 | `margin` | `string` | `"12px"` | CSS length for vertical spacing around pages (top of the first page + bottom of every page) |
 | `scrollBehavior` | `"smooth"` \| `"instant"` | `"smooth"` | Scroll animation for next/prev page and next/prev search match navigation. `"instant"` jumps without animating. Changeable at runtime via `viewer.setScrollBehavior(...)`. |
+| `nativeTextSelection` | `boolean` | `true` | Restores native browser text-selection highlighting in the PDF text layer. `pdf_viewer.css` suppresses it for the full pdf.js viewer's custom selection system; this viewer injects a one-line `<style>` to re-enable it. Set to `false` to skip that injection. |
 
 ### `viewer.load(url, options?)`
 

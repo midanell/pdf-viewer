@@ -25,6 +25,7 @@ export class PdfViewer {
     this._pageMargin = options.margin ?? "12px";
     this._scrollBehavior =
       options.scrollBehavior === "instant" ? "instant" : "smooth";
+    if (options.nativeTextSelection !== false) PdfViewer._injectSelectionStyle();
     this.pdf = null;
     this.renderers = [];
     this._rendererByWrapper = new Map();
@@ -635,6 +636,16 @@ export class PdfViewer {
     if (this._scrollRoot && this._scrollRoot !== widthTarget) {
       this._observer.observe(this._scrollRoot);
     }
+  }
+
+  static _injectSelectionStyle() {
+    const id = "pdf-viewer-selection-style";
+    if (document.getElementById(id)) return;
+    const style = document.createElement("style");
+    style.id = id;
+    style.textContent =
+      ".textLayer :is(span,br)::selection{background:Highlight;}";
+    document.head.appendChild(style);
   }
 
 }
