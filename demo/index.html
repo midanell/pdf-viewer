@@ -72,7 +72,9 @@
         gap: 0.5rem;
       }
 
-      .ctrl-row label {
+      /* Only the row's own text label flexes — not the toggle (also a
+         <label>) or the segmented control's inner labels (nested deeper). */
+      .ctrl-row > label:not(.toggle) {
         font-size: 0.8rem;
         color: #bbb;
         flex: 1;
