@@ -73,6 +73,24 @@ pageOrderInput.addEventListener("keydown", (e) => {
 });
 pageOrderInput.addEventListener("blur", rebuild);
 
+// Random page order: pick up to 10 unique pages (capped at the document's
+// page count) in random order, then rebuild to apply them.
+function randomPageOrder() {
+  const total = viewer?.pdf?.numPages ?? 10;
+  const count = Math.min(10, total, 1 + Math.floor(Math.random() * 10));
+  const pages = Array.from({ length: total }, (_, i) => i + 1);
+  for (let i = pages.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pages[i], pages[j]] = [pages[j], pages[i]];
+  }
+  return pages.slice(0, count);
+}
+
+document.getElementById("opt-page-order-rand").addEventListener("click", () => {
+  pageOrderInput.value = randomPageOrder().join(",");
+  rebuild();
+});
+
 // ── Divider drag ──────────────────────────────────────────────────────────────
 
 const divider = document.getElementById("divider");

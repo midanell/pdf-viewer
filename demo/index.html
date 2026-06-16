@@ -146,6 +146,28 @@
         outline: none;
       }
       .ctrl-input:focus { border-color: #4a9eff; }
+
+      /* Input + action button on one line */
+      .po-row {
+        display: flex;
+        gap: 0.4rem;
+        align-items: stretch;
+      }
+      .po-row .ctrl-input { flex: 1; min-width: 0; }
+      .ctrl-btn {
+        flex-shrink: 0;
+        background: #1e2022;
+        border: 1px solid #3a3c3e;
+        border-radius: 4px;
+        color: #bbb;
+        font-size: 0.9rem;
+        line-height: 1;
+        padding: 0 9px;
+        cursor: pointer;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      .ctrl-btn:hover { background: #34373a; border-color: #4a9eff; }
+      .ctrl-btn:active { background: #4a9eff; border-color: #4a9eff; }
       .ctrl-hint {
         font-size: 0.68rem;
         color: #666;
@@ -237,13 +259,21 @@
         <div class="ctrl-group-label">Page order</div>
 
         <div>
-          <input
-            type="text"
-            id="opt-page-order"
-            class="ctrl-input"
-            value="3,4,66,55"
-            placeholder="e.g. 3,1,2"
-          />
+          <div class="po-row">
+            <input
+              type="text"
+              id="opt-page-order"
+              class="ctrl-input"
+              value="3,4,66,55"
+              placeholder="e.g. 3,1,2"
+            />
+            <button
+              type="button"
+              id="opt-page-order-rand"
+              class="ctrl-btn"
+              title="Generate a random page order (max 10 pages)"
+            >🎲</button>
+          </div>
           <p class="ctrl-hint">Comma-separated page numbers to promote</p>
         </div>
 
