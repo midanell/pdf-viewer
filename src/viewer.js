@@ -254,7 +254,16 @@ export class PdfViewer {
 
   async _renderAllCached() {
     const token = ++this._cacheToken;
-    for (const pr of this.renderers) {
+    // Render outward from the page in view: the visible window (current ±3)
+    // repaints eagerly so zoom feels instant, then the rest fills in only when
+    // the main thread is idle so background re-rendering never janks scrolling.
+    const center = this._currentPage ?? 1;
+    const distOf = (pr) =>
+      Math.abs((this._slotByRenderer.get(pr) ?? center) - center);
+    const order = [...this.renderers].sort((a, b) => distOf(a) - distOf(b));
+    for (const pr of order) {
+      if (token !== this._cacheToken || !this.pdf) return;
+      if (distOf(pr) > 3) await this._idleYield();
       if (token !== this._cacheToken || !this.pdf) return;
       try {
         await pr.render({
@@ -268,6 +277,18 @@ export class PdfViewer {
       if (token !== this._cacheToken) return;
       this._search?.applyToPage(pr);
     }
+  }
+
+  // Resolve on the next idle slice (or next tick where unsupported) so queued
+  // background page renders yield to user input, scrolling, and paint.
+  _idleYield() {
+    return new Promise((resolve) => {
+      if (typeof requestIdleCallback === "function") {
+        requestIdleCallback(() => resolve(), { timeout: 200 });
+      } else {
+        setTimeout(resolve, 0);
+      }
+    });
   }
 
   async _teardownPages() {
