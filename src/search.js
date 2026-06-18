@@ -1,6 +1,13 @@
-const MARK_BG = "rgba(255,200,0,0.5)";
-const MARK_BG_CURRENT = "rgba(255,140,0,0.85)";
-const MARK_STYLE_BASE = "color: inherit; padding: 0; border-radius: 2px;";
+const MARK_STYLE_BASE = "padding: 0; border-radius: 1px;";
+// Non-current matches: translucent tint. Text stays transparent so the canvas
+// glyphs (whatever their color) show through — these are just locators.
+const MARK_STYLE = `${MARK_STYLE_BASE} color: inherit; background-color: rgba(255,213,74,0.45);`;
+// Current match: opaque fill + forced dark text. This makes the text layer's
+// OWN copy of the glyphs visible and the opaque fill hides the canvas text
+// underneath, so the match reads on ANY background — light text on a dark page
+// or dark text on a light page. A single blend mode (multiply/screen) can only
+// fix one of those two cases, which is why we control both fg and bg instead.
+const MARK_STYLE_CURRENT = `${MARK_STYLE_BASE} color: #1a1a1a; background-color: #ffd54a;`;
 
 export class PdfSearch {
   constructor(renderers, { onUpdate, scrollBehavior = "smooth" } = {}) {
@@ -118,9 +125,7 @@ export class PdfSearch {
         const globalIdx = pageStart + localIdx;
         mark.dataset.matchIndex = String(globalIdx);
         const isCurrent = globalIdx === this._currentIdx;
-        mark.style.cssText = `background-color: ${
-          isCurrent ? MARK_BG_CURRENT : MARK_BG
-        }; ${MARK_STYLE_BASE}`;
+        mark.style.cssText = isCurrent ? MARK_STYLE_CURRENT : MARK_STYLE;
         if (isCurrent) this._currentMarkEl = mark;
         frag.appendChild(mark);
         lastIdx = re.lastIndex;
@@ -199,10 +204,10 @@ export class PdfSearch {
 
   _setCurrentMark(mark) {
     if (this._currentMarkEl && this._currentMarkEl !== mark) {
-      this._currentMarkEl.style.backgroundColor = MARK_BG;
+      this._currentMarkEl.style.cssText = MARK_STYLE;
     }
     this._currentMarkEl = mark ?? null;
-    if (mark) mark.style.backgroundColor = MARK_BG_CURRENT;
+    if (mark) mark.style.cssText = MARK_STYLE_CURRENT;
   }
 
   _clearAllMarks() {
