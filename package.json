@@ -3,9 +3,15 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "npx serve ."
+    "dev": "npx serve .",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "pdfjs-dist": "6.0.227"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "vitest": "^4.1.9"
   }
 }
