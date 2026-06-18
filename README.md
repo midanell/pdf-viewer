@@ -13,6 +13,7 @@ A lightweight, framework-free PDF viewer built on [Mozilla PDF.js](https://mozil
 - Retina / high-DPI support
 - Built-in loading overlay (indeterminate → determinate progress bar)
 - Configurable page ordering and page filtering
+- Custom highlight annotations — overlay your own non-interactive rectangles on any page
 - Responsive toolbar that collapses to a compact mode on narrow viewports
 
 ## Installation
@@ -73,6 +74,7 @@ Two requirements are easy to miss:
 | `scrollBehavior` | `"smooth"` \| `"instant"` | `"smooth"` | Scroll animation for next/prev page and next/prev search match navigation. `"instant"` jumps without animating. Changeable at runtime via `viewer.setScrollBehavior(...)`. |
 | `nativeTextSelection` | `boolean` | `true` | Restores native browser text-selection highlighting in the PDF text layer. `pdf_viewer.css` suppresses it for the full pdf.js viewer's custom selection system; this viewer injects a one-line `<style>` to re-enable it. Set to `false` to skip that injection. |
 | `cacheFullPdf` | `boolean` | `false` | Eagerly render **every** page at the current zoom and keep all canvases resident (disables lazy rendering and the discard-on-scroll behavior), so scrolling anywhere is instant. The cache re-renders on zoom/rotation and is freed on `destroy()`. Trades memory (one canvas per page) for speed — best for small/medium documents. |
+| `customAnnotations` | `object[]` | `[]` | Non-interactive highlight rectangles drawn over pages in a dedicated overlay layer. See [Custom annotations](#custom-annotations). |
 
 ### `viewer.load(url, options?)`
 
@@ -128,6 +130,45 @@ viewer.setPageOrder([3, 1, 2], { hideUnordered: false })
 ```
 
 Promotes pages 3, 1, 2 to the front; remaining pages follow in natural order unless `hideUnordered` is `true`.
+
+### Custom annotations
+
+Overlay your own highlight rectangles on top of any page — useful for marking hits from an external search index, redaction previews, review comments, or any programmatic highlighting. They render in a dedicated layer (`.customAnnotationLayer`, z-index 4) above the canvas, text, and PDF annotation layers, with `pointer-events: none` so they never interfere with text selection or links.
+
+Pass them at construction time:
+
+```js
+const viewer = new PdfViewer(host, {
+  customAnnotations: [
+    { page: 1, x: 0.1, y: 0.8, width: 0.3, height: 0.05 },
+    { page: 2, x: 0.5, y: 0.4, width: 0.2, height: 0.1, color: "#4a9eff", opacity: 0.5 },
+  ],
+});
+```
+
+Or replace the whole set at runtime — this clears any existing annotations and re-places the new ones on every page:
+
+```js
+viewer.setCustomAnnotations([
+  { page: 3, x: 0.2, y: 0.6, width: 0.4, height: 0.04 },
+]);
+
+viewer.setCustomAnnotations([]); // pass an empty array (or omit) to clear all
+```
+
+Each annotation is a plain object:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `page` | `number` | `1` | 1-indexed PDF page number the annotation belongs to |
+| `x` | `number` | — | Left edge, as a fraction of page width (0–1) |
+| `y` | `number` | — | **Bottom** edge, as a fraction of page height (0–1), measured from the bottom of the page |
+| `width` | `number` | — | Width as a fraction of page width (0–1) |
+| `height` | `number` | — | Height as a fraction of page height (0–1) |
+| `color` | `string` | `"#ffd54a"` | Any CSS color for the highlight fill |
+| `opacity` | `number` | `0.35` | Fill opacity (0–1) |
+
+Coordinates use **normalized PDF space**: the origin is the bottom-left corner of the page and every value is a `0–1` fraction of the page's dimensions. Because positions are relative rather than pixel-based, annotations stay correctly placed across zoom, fit-width/fit-page changes, and rotation (0/90/180/270°). Entries with a non-finite `x`, `y`, `width`, or `height` are skipped, and an entry whose `page` matches no rendered page is simply not shown.
 
 ### Thumbnails
 
