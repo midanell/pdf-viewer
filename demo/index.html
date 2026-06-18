@@ -13,7 +13,11 @@
       }
     </script>
     <style>
-      *, *::before, *::after { box-sizing: border-box; }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
 
       body {
         margin: 0;
@@ -88,7 +92,11 @@
         height: 20px;
         flex-shrink: 0;
       }
-      .toggle input { opacity: 0; width: 0; height: 0; }
+      .toggle input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
       .toggle-track {
         position: absolute;
         cursor: pointer;
@@ -97,7 +105,9 @@
         border-radius: 20px;
         transition: background 0.18s;
       }
-      .toggle input:checked + .toggle-track { background: #4a9eff; }
+      .toggle input:checked + .toggle-track {
+        background: #4a9eff;
+      }
       .toggle-track::before {
         content: "";
         position: absolute;
@@ -109,7 +119,9 @@
         border-radius: 50%;
         transition: transform 0.18s;
       }
-      .toggle input:checked + .toggle-track::before { transform: translateX(16px); }
+      .toggle input:checked + .toggle-track::before {
+        transform: translateX(16px);
+      }
 
       /* ── Segmented control ───────────────────────────────── */
       .seg {
@@ -119,13 +131,17 @@
         overflow: hidden;
         flex-shrink: 0;
       }
-      .seg input[type="radio"] { display: none; }
+      .seg input[type="radio"] {
+        display: none;
+      }
       .seg label {
         padding: 3px 8px;
         font-size: 0.72rem;
         color: #888;
         cursor: pointer;
-        transition: background 0.15s, color 0.15s;
+        transition:
+          background 0.15s,
+          color 0.15s;
         white-space: nowrap;
         flex: 0;
       }
@@ -145,7 +161,9 @@
         padding: 4px 7px;
         outline: none;
       }
-      .ctrl-input:focus { border-color: #4a9eff; }
+      .ctrl-input:focus {
+        border-color: #4a9eff;
+      }
 
       /* Input + action button on one line */
       .po-row {
@@ -153,7 +171,10 @@
         gap: 0.4rem;
         align-items: stretch;
       }
-      .po-row .ctrl-input { flex: 1; min-width: 0; }
+      .po-row .ctrl-input {
+        flex: 1;
+        min-width: 0;
+      }
       .ctrl-btn {
         flex-shrink: 0;
         background: #1e2022;
@@ -164,14 +185,27 @@
         line-height: 1;
         padding: 0 9px;
         cursor: pointer;
-        transition: background 0.15s, border-color 0.15s;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
       }
-      .ctrl-btn:hover { background: #34373a; border-color: #4a9eff; }
-      .ctrl-btn:active { background: #4a9eff; border-color: #4a9eff; }
+      .ctrl-btn:hover {
+        background: #34373a;
+        border-color: #4a9eff;
+      }
+      .ctrl-btn:active {
+        background: #4a9eff;
+        border-color: #4a9eff;
+      }
+      .btn-row {
+        display: flex;
+        gap: 0.4rem;
+        flex-shrink: 0;
+      }
       .ctrl-hint {
         font-size: 0.68rem;
         color: #666;
-        margin-top: -0.25rem;
+        margin-top: 0.25rem;
       }
 
       /* ── Divider ─────────────────────────────────────────── */
@@ -182,7 +216,10 @@
         cursor: col-resize;
         transition: background 0.1s;
       }
-      #divider:hover, #divider.dragging { background: #4a9eff; }
+      #divider:hover,
+      #divider.dragging {
+        background: #4a9eff;
+      }
 
       /* ── Main/viewer ─────────────────────────────────────── */
       #main {
@@ -194,11 +231,14 @@
         min-height: 0;
       }
 
-      #pdf-host { flex: 1; min-height: 0; }
+      #pdf-host {
+        flex: 1;
+        min-height: 0;
+      }
 
       #pdf-host [data-page-number] {
         display: block;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
       }
     </style>
   </head>
@@ -221,7 +261,13 @@
         <div class="ctrl-row">
           <label>Sizing</label>
           <div class="seg">
-            <input type="radio" name="sizing" id="sz-fw" value="fit-width" checked />
+            <input
+              type="radio"
+              name="sizing"
+              id="sz-fw"
+              value="fit-width"
+              checked
+            />
             <label for="sz-fw">Fit width</label>
             <input type="radio" name="sizing" id="sz-fp" value="fit-page" />
             <label for="sz-fp">Fit page</label>
@@ -238,7 +284,13 @@
         <div class="ctrl-row">
           <label>Scroll</label>
           <div class="seg">
-            <input type="radio" name="scroll" id="sc-sm" value="smooth" checked />
+            <input
+              type="radio"
+              name="scroll"
+              id="sc-sm"
+              value="smooth"
+              checked
+            />
             <label for="sc-sm">Smooth</label>
             <input type="radio" name="scroll" id="sc-in" value="instant" />
             <label for="sc-in">Instant</label>
@@ -272,7 +324,9 @@
               id="opt-page-order-rand"
               class="ctrl-btn"
               title="Generate a random page order (max 10 pages)"
-            >🎲</button>
+            >
+              🎲
+            </button>
           </div>
           <p class="ctrl-hint">Comma-separated page numbers to promote</p>
         </div>
@@ -297,6 +351,24 @@
             <span class="toggle-track"></span>
           </label>
         </div>
+      </div>
+
+      <!-- Annotations -->
+      <div class="ctrl-group">
+        <div class="ctrl-group-label">Annotations</div>
+
+        <div class="ctrl-row">
+          <label>Custom highlights</label>
+          <div class="btn-row">
+            <button type="button" id="anno-add" class="ctrl-btn">+ Add</button>
+            <button type="button" id="anno-clear" class="ctrl-btn">
+              Clear
+            </button>
+          </div>
+        </div>
+        <p class="ctrl-hint">
+          Adds a random highlight box on the page in view.
+        </p>
       </div>
     </aside>
 

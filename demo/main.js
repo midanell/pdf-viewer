@@ -17,6 +17,9 @@ function getOpts() {
     pageOrder,
     hideUnorderedPages: document.getElementById("opt-hide-unordered").checked,
     nativeTextSelection: document.getElementById("opt-native-sel").checked,
+    // Seed the rebuilt viewer with whatever highlights are currently active,
+    // so they survive option changes (exercises the constructor path too).
+    customAnnotations: annotations,
   };
 }
 
@@ -25,6 +28,7 @@ function getOpts() {
 const host = document.getElementById("pdf-host");
 let viewer = null;
 let rebuilding = false;
+let annotations = [];
 
 async function rebuild() {
   if (rebuilding) return;
@@ -89,6 +93,39 @@ function randomPageOrder() {
 document.getElementById("opt-page-order-rand").addEventListener("click", () => {
   pageOrderInput.value = randomPageOrder().join(",");
   rebuild();
+});
+
+// ── Custom annotations ────────────────────────────────────────────────────────
+
+const ANNO_COLORS = ["#ffd54a", "#4a9eff", "#ff5a7a", "#5ad17a", "#c77dff"];
+
+// A random highlight box (normalized 0–1 PDF coords) on the given PDF page.
+function randomAnnotation(page) {
+  const width = 0.2 + Math.random() * 0.3; // 0.20 – 0.50 of page width
+  const height = 0.03 + Math.random() * 0.07; // 0.03 – 0.10 of page height
+  return {
+    page,
+    x: Math.random() * (1 - width),
+    y: Math.random() * (1 - height),
+    width,
+    height,
+    color: ANNO_COLORS[Math.floor(Math.random() * ANNO_COLORS.length)],
+    opacity: 0.4,
+  };
+}
+
+document.getElementById("anno-add").addEventListener("click", () => {
+  if (!viewer?.pdf) return;
+  // Target the PDF page currently in view so the new highlight is visible.
+  const visible = viewer.getCurrentPage();
+  const page = viewer.renderers[visible - 1]?.pageNumber ?? 1;
+  annotations = [...annotations, randomAnnotation(page)];
+  viewer.setCustomAnnotations(annotations);
+});
+
+document.getElementById("anno-clear").addEventListener("click", () => {
+  annotations = [];
+  viewer?.setCustomAnnotations(annotations);
 });
 
 // ── Divider drag ──────────────────────────────────────────────────────────────
