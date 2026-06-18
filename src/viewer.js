@@ -28,6 +28,9 @@ export class PdfViewer {
     if (options.nativeTextSelection !== false) PdfViewer._injectSelectionStyle();
     this._cacheFullPdf = options.cacheFullPdf === true;
     this._cacheToken = 0;
+    // Bumped on every load()/destroy() so a superseded in-flight load can
+    // detect it is stale and stop (without orphaning its loading overlay).
+    this._loadGen = 0;
     this.pdf = null;
     this._loadingTask = null;
     this.renderers = [];
@@ -92,20 +95,31 @@ export class PdfViewer {
   }
 
   async load(url, options = {}) {
+    const gen = ++this._loadGen;
+    // A previous load may still be in flight with its overlay showing; clear it
+    // so overlays never stack or get orphaned in the host DOM.
+    this._loading?.destroy();
+    this._loading = null;
+
+    let loading = null;
     if (!this._useCustomProgress) {
       this.host.style.position ||= "relative";
-      this._loading = new PdfLoading(this.host);
+      loading = new PdfLoading(this.host);
+      this._loading = loading;
     }
     try {
-      return await this._loadInternal(url, options);
+      return await this._loadInternal(url, options, gen);
     } finally {
-      this._loading?.destroy();
-      this._loading = null;
+      // Always remove THIS call's own overlay (idempotent), and only null the
+      // shared field if a newer load hasn't already taken it over.
+      loading?.destroy();
+      if (this._loading === loading) this._loading = null;
     }
   }
 
-  async _loadInternal(url, options = {}) {
+  async _loadInternal(url, options = {}, gen = this._loadGen) {
     if (this.pdf) await this._unload();
+    if (gen !== this._loadGen) return;
     this._rotation = 0;
     this._zoomMode = this._defaultZoomMode;
     this._explicitScale = this._defaultScale;
@@ -115,13 +129,26 @@ export class PdfViewer {
         : url instanceof Uint8Array
           ? { data: url, ...PDF_ASSET_URLS }
           : { ...url, ...PDF_ASSET_URLS };
-    this._loadingTask = pdfjsLib.getDocument(src);
-    this._loadingTask.onProgress = ({ loaded, total }) => {
+    const loadingTask = pdfjsLib.getDocument(src);
+    this._loadingTask = loadingTask;
+    loadingTask.onProgress = ({ loaded, total }) => {
+      if (gen !== this._loadGen) return; // a newer load owns the overlay now
       this._loading?.update({ loaded, total });
       options.onProgress?.({ loaded, total });
     };
-    this.pdf = await this._loadingTask.promise;
-    this._loadingTask = null;
+    let pdf;
+    try {
+      pdf = await loadingTask.promise;
+    } finally {
+      if (this._loadingTask === loadingTask) this._loadingTask = null;
+    }
+    // Superseded by a newer load() (or destroy()) while parsing — discard this
+    // document and stop before mutating any shared viewer state.
+    if (gen !== this._loadGen) {
+      await loadingTask.destroy().catch(() => {});
+      return;
+    }
+    this.pdf = pdf;
     this.linkService = createLinkService(this.pdf, {
       onNavigate: (pdfPageNum) => this._goToPdfPage(pdfPageNum),
     });
@@ -192,6 +219,9 @@ export class PdfViewer {
     this._lastHeight = this._scrollRoot.clientHeight;
 
     await this._buildVisiblePages();
+    // Superseded while building pages — a newer load() (or destroy()) is now in
+    // charge; stop before wiring observers/listeners for this stale document.
+    if (gen !== this._loadGen) return;
     this._observe();
 
     (this._scrollRoot ?? window).addEventListener("wheel", this._onWheel, {
@@ -363,6 +393,7 @@ export class PdfViewer {
   }
 
   async destroy() {
+    this._loadGen++; // invalidate any in-flight load() so it stops and self-cleans
     this._loading?.destroy();
     this._loading = null;
     await this._unload();
