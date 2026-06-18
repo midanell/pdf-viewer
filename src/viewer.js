@@ -7,92 +7,102 @@ import { PdfSearch } from "./search.js";
 import { PdfThumbnails } from "./thumbnails.js";
 import { PdfLoading } from "./loading.js";
 
+// Zoom
 const ZOOM_STEPS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0];
+const ZOOM_EPSILON = 0.01; // tolerance when finding the next/prev zoom step
+const MIN_SCALE = 0.1;
+
+// Defaults
+const DEFAULT_ZOOM_MODE = "fit-width";
+const DEFAULT_SCALE = 1.5;
+const DEFAULT_PAGE_MARGIN = "12px";
+
+// Render scheduling
+const CACHE_EAGER_RADIUS = 3; // pages each side of the current one to repaint eagerly
+const IDLE_RENDER_TIMEOUT_MS = 200;
+const LAZY_RENDER_MARGIN = "200px"; // pre-render pages this far before they enter view
+const DISCARD_RENDER_MARGIN = "1500px"; // keep pages this far outside view before discarding
+const PAGE_VISIBILITY_THRESHOLDS = [0, 0.25, 0.5, 0.75, 1];
+
+// Input / timing
+const WHEEL_ZOOM_THROTTLE_MS = 100;
+const SCROLL_SUPPRESS_MS = 600; // ignore observer-driven page changes during a programmatic scroll
+const RESIZE_DEBOUNCE_MS = 150;
 
 export class PdfViewer {
   constructor(host, options = {}) {
     this.host = host;
-    this._defaultZoomMode = options.sizing ?? "fit-width";
-    this._defaultScale = options.scale ?? 1.5;
-    this._zoomMode = this._defaultZoomMode; // "fit-width" | "explicit"
+
+    // Zoom / rotation state
+    this._defaultZoomMode = options.sizing ?? DEFAULT_ZOOM_MODE;
+    this._defaultScale = options.scale ?? DEFAULT_SCALE;
+    this._zoomMode = this._defaultZoomMode; // "fit-width" | "fit-page" | "explicit"
     this._explicitScale = this._defaultScale;
     this._rotation = 0;
+
+    // Options
     this._zoomControls = options.zoomControls ?? true;
     this._useCustomProgress = options.useCustomProgress ?? false;
     this._pageOrder = options.pageOrder ?? [];
     this._hideUnordered = options.hideUnorderedPages ?? false;
     this._customAnnotations = options.customAnnotations ?? [];
-    this._pageMargin = options.margin ?? "12px";
+    this._pageMargin = options.margin ?? DEFAULT_PAGE_MARGIN;
     this._scrollBehavior =
       options.scrollBehavior === "instant" ? "instant" : "smooth";
-    if (options.nativeTextSelection !== false) PdfViewer._injectSelectionStyle();
     this._cacheFullPdf = options.cacheFullPdf === true;
-    this._cacheToken = 0;
-    // Bumped on every load()/destroy() so a superseded in-flight load can
-    // detect it is stale and stop (without orphaning its loading overlay).
-    this._loadGen = 0;
+    if (options.nativeTextSelection !== false) PdfViewer._injectSelectionStyle();
+
+    // Document
     this.pdf = null;
+    this.linkService = null;
     this._loadingTask = null;
+    // Bumped on every load()/destroy() so a superseded in-flight load can detect
+    // it is stale and stop (without orphaning its loading overlay).
+    this._loadGen = 0;
+    // Bumped to cancel an in-flight full-cache render pass.
+    this._cacheToken = 0;
+
+    // Renderers + lookup maps
     this.renderers = [];
     this._rendererByWrapper = new Map();
     this._slotByRenderer = new Map();
-    this._observer = null;
-    this._lazyObserver = null;
-    this._discardObserver = null;
-    this._resizeTimer = null;
+
+    // Observers
+    this._observer = null; // ResizeObserver
+    this._pageObserver = null; // current-page detection
+    this._lazyObserver = null; // render-on-approach
+    this._discardObserver = null; // discard-when-far
+
+    // Geometry / scroll tracking
     this._lastWidth = 0;
     this._lastHeight = 0;
-    this._scrollRoot = null;
-    this._toolbar = null;
-    this._lastWheelZoom = 0;
+    this._resizeTimer = null;
     this._currentPage = 1;
     this._pageRatios = new Map();
-    this._pageObserver = null;
     this._scrollingTo = false;
     this._scrollingToTimer = null;
+    this._lastWheelZoom = 0;
+
+    // Collaborators
+    this._toolbar = null;
     this._search = null;
     this._thumbnails = null;
     this._thumbnailsActive = false;
+    this._loading = null;
+
+    // Layout DOM refs
+    this._bodyRow = null;
+    this._scrollWrapper = null;
+    this._scrollRoot = null;
     this._contentRow = null;
     this._pagesCol = null;
-    this._scrollWrapper = null;
-    this._bodyRow = null;
-    this._loading = null;
-    this._onWheel = (e) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
-      e.preventDefault();
-      const now = Date.now();
-      if (now - this._lastWheelZoom < 100) return;
-      this._lastWheelZoom = now;
-      if (e.deltaY < 0) this.zoomIn();
-      else if (e.deltaY > 0) this.zoomOut();
-    };
-    this._onKeyDown = (e) => {
-      const key = e.key.toLowerCase();
-      if ((e.metaKey || e.ctrlKey) && key === "f") {
-        if (!this.host.contains(document.activeElement)) return;
-        e.preventDefault();
-        this._toolbar?.focusSearch();
-        return;
-      }
-      if (
-        (e.metaKey || e.ctrlKey) &&
-        (key === "+" || key === "=" || key === "-" || key === "_")
-      ) {
-        if (!this.host.contains(document.activeElement)) return;
-        e.preventDefault();
-        if (key === "-" || key === "_") this.zoomOut();
-        else this.zoomIn();
-        return;
-      }
-      if (key === "escape" && this._toolbar?.isSearchFocused()) {
-        e.preventDefault();
-        this._toolbar.clearSearch();
-        this.search("");
-        this._scrollRoot?.focus();
-      }
-    };
+
+    // Stored handlers (stable identity so add/removeEventListener pair up)
+    this._onWheel = (e) => this._handleWheelZoom(e);
+    this._onKeyDown = (e) => this._handleShortcut(e);
   }
+
+  // ── Document lifecycle ──────────────────────────────────────────────────────
 
   async load(url, options = {}) {
     const gen = ++this._loadGen;
@@ -120,70 +130,145 @@ export class PdfViewer {
   async _loadInternal(url, options = {}, gen = this._loadGen) {
     if (this.pdf) await this._unload();
     if (gen !== this._loadGen) return;
+    this._resetLoadState();
+
+    const pdf = await this._openDocument(
+      this._buildDocumentSource(url),
+      gen,
+      options.onProgress
+    );
+    if (!pdf) return; // superseded while parsing
+    this.pdf = pdf;
+    this.linkService = createLinkService(this.pdf, {
+      onNavigate: (pdfPageNum) => this._goToPdfPage(pdfPageNum),
+    });
+
+    this._buildLayoutDom();
+
+    await this._buildVisiblePages();
+    // Superseded while building pages — a newer load() (or destroy()) is now in
+    // charge; stop before wiring observers/listeners for this stale document.
+    if (gen !== this._loadGen) return;
+    this._observe();
+    this._attachInputListeners();
+  }
+
+  _resetLoadState() {
     this._rotation = 0;
     this._zoomMode = this._defaultZoomMode;
     this._explicitScale = this._defaultScale;
-    const src =
-      typeof url === "string" || url instanceof URL
-        ? { url, ...PDF_ASSET_URLS }
-        : url instanceof Uint8Array
-          ? { data: url, ...PDF_ASSET_URLS }
-          : { ...url, ...PDF_ASSET_URLS };
+  }
+
+  _buildDocumentSource(url) {
+    if (typeof url === "string" || url instanceof URL) {
+      return { url, ...PDF_ASSET_URLS };
+    }
+    if (url instanceof Uint8Array) {
+      return { data: url, ...PDF_ASSET_URLS };
+    }
+    return { ...url, ...PDF_ASSET_URLS };
+  }
+
+  // Opens the document and returns the proxy, or null if this load was
+  // superseded while parsing (in which case the half-loaded doc is discarded).
+  async _openDocument(src, gen, onProgress) {
     const loadingTask = pdfjsLib.getDocument(src);
     this._loadingTask = loadingTask;
     loadingTask.onProgress = ({ loaded, total }) => {
       if (gen !== this._loadGen) return; // a newer load owns the overlay now
       this._loading?.update({ loaded, total });
-      options.onProgress?.({ loaded, total });
+      onProgress?.({ loaded, total });
     };
+
     let pdf;
     try {
       pdf = await loadingTask.promise;
     } finally {
       if (this._loadingTask === loadingTask) this._loadingTask = null;
     }
-    // Superseded by a newer load() (or destroy()) while parsing — discard this
-    // document and stop before mutating any shared viewer state.
+
     if (gen !== this._loadGen) {
       await loadingTask.destroy().catch(() => {});
-      return;
+      return null;
     }
-    this.pdf = pdf;
-    this.linkService = createLinkService(this.pdf, {
-      onNavigate: (pdfPageNum) => this._goToPdfPage(pdfPageNum),
-    });
+    return pdf;
+  }
 
+  async destroy() {
+    this._loadGen++; // invalidate any in-flight load() so it stops and self-cleans
+    this._loading?.destroy();
+    this._loading = null;
+    await this._unload();
+  }
+
+  async _unload() {
+    (this._scrollRoot ?? window).removeEventListener("wheel", this._onWheel);
+    window.removeEventListener("keydown", this._onKeyDown);
+    this._observer?.disconnect();
+    this._observer = null;
+    clearTimeout(this._resizeTimer);
+    clearTimeout(this._scrollingToTimer);
+    this._toolbar?.destroy();
+    this._toolbar = null;
+
+    await this._disposePages();
+
+    this._contentRow?.remove();
+    this._contentRow = null;
+    this._pagesCol = null;
+    this._scrollWrapper?.remove();
+    this._scrollWrapper = null;
+    this._bodyRow?.remove();
+    this._bodyRow = null;
+    this._scrollRoot = null;
+
+    const loadingTask = this._loadingTask;
+    this._loadingTask = null;
+    this.pdf = null;
+    await loadingTask?.destroy();
+  }
+
+  // ── Layout / chrome ─────────────────────────────────────────────────────────
+
+  _buildLayoutDom() {
     Object.assign(this.host.style, {
       display: "flex",
       flexDirection: "column",
       overflow: "hidden",
     });
+    this._createToolbar();
+    this._buildScrollLayout();
+    this._lastWidth = this._measureContentWidth();
+    this._lastHeight = this._scrollRoot.clientHeight;
+  }
 
-    if (this._zoomControls) {
-      this._toolbar = new PdfToolbar(this.host, {
-        pageCount: this.pdf.numPages,
-        currentPage: this._currentPage,
-        scale: this._effectiveScale(),
-        fitWidthActive: this._zoomMode === "fit-width",
-        fitPageActive: this._zoomMode === "fit-page",
-        thumbnailsActive: false,
-        onPrev: () => this.goToPage(this._currentPage - 1),
-        onNext: () => this.goToPage(this._currentPage + 1),
-        onGoToPage: (n) => this.goToPage(n),
-        onZoomIn: () => this.zoomIn(),
-        onZoomOut: () => this.zoomOut(),
-        onFitWidth: () => this.setZoom("fit-width"),
-        onFitPage: () => this.setZoom("fit-page"),
-        onRotateCW: () => this.rotateClockwise(),
-        onRotateCCW: () => this.rotateCounterclockwise(),
-        onThumbnails: () => this.toggleThumbnails(),
-        onSearch: ({ query, matchCase, wholeWord }) =>
-          this.search(query, { matchCase, wholeWord }),
-        onPrevMatch: () => this.prevMatch(),
-        onNextMatch: () => this.nextMatch(),
-      });
-    }
+  _createToolbar() {
+    if (!this._zoomControls) return;
+    this._toolbar = new PdfToolbar(this.host, {
+      pageCount: this.pdf.numPages,
+      currentPage: this._currentPage,
+      scale: this._effectiveScale(),
+      fitWidthActive: this._zoomMode === "fit-width",
+      fitPageActive: this._zoomMode === "fit-page",
+      thumbnailsActive: false,
+      onPrev: () => this.goToPage(this._currentPage - 1),
+      onNext: () => this.goToPage(this._currentPage + 1),
+      onGoToPage: (n) => this.goToPage(n),
+      onZoomIn: () => this.zoomIn(),
+      onZoomOut: () => this.zoomOut(),
+      onFitWidth: () => this.setZoom("fit-width"),
+      onFitPage: () => this.setZoom("fit-page"),
+      onRotateCW: () => this.rotateClockwise(),
+      onRotateCCW: () => this.rotateCounterclockwise(),
+      onThumbnails: () => this.toggleThumbnails(),
+      onSearch: ({ query, matchCase, wholeWord }) =>
+        this.search(query, { matchCase, wholeWord }),
+      onPrevMatch: () => this.prevMatch(),
+      onNextMatch: () => this.nextMatch(),
+    });
+  }
 
+  _buildScrollLayout() {
     this._bodyRow = document.createElement("div");
     Object.assign(this._bodyRow.style, {
       flex: "1",
@@ -207,50 +292,72 @@ export class PdfViewer {
     this._scrollRoot = this._scrollWrapper;
 
     this._contentRow = document.createElement("div");
-    Object.assign(this._contentRow.style, { display: "flex", alignItems: "flex-start" });
+    Object.assign(this._contentRow.style, {
+      display: "flex",
+      alignItems: "flex-start",
+    });
 
     this._pagesCol = document.createElement("div");
     Object.assign(this._pagesCol.style, { flex: "1", minWidth: "0" });
 
     this._contentRow.appendChild(this._pagesCol);
     this._scrollWrapper.appendChild(this._contentRow);
+  }
 
-    this._lastWidth = this._measureContentWidth();
-    this._lastHeight = this._scrollRoot.clientHeight;
-
-    await this._buildVisiblePages();
-    // Superseded while building pages — a newer load() (or destroy()) is now in
-    // charge; stop before wiring observers/listeners for this stale document.
-    if (gen !== this._loadGen) return;
-    this._observe();
-
+  _attachInputListeners() {
     (this._scrollRoot ?? window).addEventListener("wheel", this._onWheel, {
       passive: false,
     });
     window.addEventListener("keydown", this._onKeyDown);
   }
 
+  // ── Page build & teardown ───────────────────────────────────────────────────
+
   async _buildVisiblePages() {
     await this._teardownPages();
 
-    const slots = this._computeSlots();
+    await this._instantiateRenderers(this._computeSlots());
+    this._mountRenderers();
+    this._distributeCustomAnnotations();
+    this._createSearchAndThumbnails();
+
+    if (this.renderers[0]) {
+      await this.renderers[0].render();
+    }
+    this._toolbar?.updateZoom(this._effectiveScale());
+
+    this._startRenderPipeline();
+
+    this._currentPage = 1;
+    this._toolbar?.updateNav(this._currentPage, this.renderers.length);
+    this._thumbnails?.updateCurrentPage(this._currentPage);
+  }
+
+  async _instantiateRenderers(slots) {
     const pages = await Promise.all(slots.map((n) => this.pdf.getPage(n)));
     this.renderers = pages.map(
-      (page) => new PageRenderer(page, { linkService: this.linkService }),
+      (page) => new PageRenderer(page, { linkService: this.linkService })
     );
-    this._rendererByWrapper = new Map(this.renderers.map((pr) => [pr.wrapper, pr]));
-    this._slotByRenderer = new Map(this.renderers.map((pr, i) => [pr, i + 1]));
+    this._rendererByWrapper = new Map(
+      this.renderers.map((pr) => [pr.wrapper, pr])
+    );
+    this._slotByRenderer = new Map(
+      this.renderers.map((pr, i) => [pr, i + 1])
+    );
+  }
 
+  _mountRenderers() {
     this.renderers.forEach((pr, i, array) => {
       pr.setSize({ scale: this._scaleFor(pr), rotation: this._rotation });
       pr.wrapper.style.marginLeft = "auto";
       pr.wrapper.style.marginRight = "auto";
-      pr.wrapper.style.marginBottom = i === array.length - 1 ? "0" : this._pageMargin;
+      pr.wrapper.style.marginBottom =
+        i === array.length - 1 ? "0" : this._pageMargin;
       this._pagesCol.appendChild(pr.wrapper);
     });
+  }
 
-    this._distributeCustomAnnotations();
-
+  _createSearchAndThumbnails() {
     this._search = new PdfSearch(this.renderers, {
       onUpdate: (cur, tot) => this._toolbar?.updateSearch(cur, tot),
       scrollBehavior: this._scrollBehavior,
@@ -262,29 +369,54 @@ export class PdfViewer {
     this._bodyRow.prepend(this._thumbnails.panel);
     if (this._thumbnailsActive) this._thumbnails.show();
     if (this._rotation !== 0) this._thumbnails.setRotation(this._rotation);
+  }
 
-    if (this.renderers[0]) {
-      await this.renderers[0].render();
-    }
-    this._toolbar?.updateZoom(this._effectiveScale());
+  async _teardownPages() {
+    if (!this.renderers.length) return;
+    await this._disposePages();
+  }
 
+  // Shared renderer/observer/search/thumbnail teardown used by both a page
+  // rebuild (_teardownPages) and a full unload (_unload).
+  async _disposePages() {
+    this._cacheToken++; // cancel any in-flight full-cache render pass
+    this._pageObserver?.disconnect();
+    this._lazyObserver?.disconnect();
+    this._discardObserver?.disconnect();
+    this._pageObserver = null;
+    this._lazyObserver = null;
+    this._discardObserver = null;
+
+    this._search?.destroy();
+    this._search = null;
+    this._thumbnails?.destroy();
+    this._thumbnails = null;
+
+    await Promise.all(this.renderers.map((pr) => pr.cancel().catch(() => {})));
+    for (const pr of this.renderers) pr.wrapper.remove();
+    this.renderers = [];
+    this._rendererByWrapper.clear();
+    this._slotByRenderer.clear();
+    this._pageRatios.clear();
+  }
+
+  // ── Render scheduling ───────────────────────────────────────────────────────
+
+  _startRenderPipeline() {
     this._setupPageObserver();
     if (this._cacheFullPdf) {
-      // Render and retain every page (no lazy/discard observers); the lazy
-      // observer is skipped so the eager pass owns all rendering (no races).
+      // Render and retain every page (no lazy/discard observers); the eager pass
+      // owns all rendering so there are no races with the lazy observer.
       this._renderAllCached();
     } else {
       this._setupLazyObserver();
       this._setupDiscardObserver();
     }
-    this._currentPage = 1;
-    this._toolbar?.updateNav(this._currentPage, this.renderers.length);
-    this._thumbnails?.updateCurrentPage(this._currentPage);
   }
 
   async _renderAllCached() {
     const token = ++this._cacheToken;
-    // Render outward from the page in view: the visible window (current ±3)
+    // Render outward from the page in view: the visible window (current ±N)
     // repaints eagerly so zoom feels instant, then the rest fills in only when
     // the main thread is idle so background re-rendering never janks scrolling.
     const center = this._currentPage ?? 1;
@@ -293,7 +425,7 @@ export class PdfViewer {
     const order = [...this.renderers].sort((a, b) => distOf(a) - distOf(b));
     for (const pr of order) {
       if (token !== this._cacheToken || !this.pdf) return;
-      if (distOf(pr) > 3) await this._idleYield();
+      if (distOf(pr) > CACHE_EAGER_RADIUS) await this._idleYield();
       if (token !== this._cacheToken || !this.pdf) return;
       try {
         await pr.render({
@@ -314,35 +446,90 @@ export class PdfViewer {
   _idleYield() {
     return new Promise((resolve) => {
       if (typeof requestIdleCallback === "function") {
-        requestIdleCallback(() => resolve(), { timeout: 200 });
+        requestIdleCallback(() => resolve(), { timeout: IDLE_RENDER_TIMEOUT_MS });
       } else {
         setTimeout(resolve, 0);
       }
     });
   }
 
-  async _teardownPages() {
-    if (!this.renderers.length) return;
-    this._cacheToken++; // cancel any in-flight full-cache render pass
-    this._lazyObserver?.disconnect();
-    this._discardObserver?.disconnect();
-    this._pageObserver?.disconnect();
-    this._lazyObserver = null;
-    this._discardObserver = null;
-    this._pageObserver = null;
-
-    this._search?.destroy();
-    this._search = null;
-    this._thumbnails?.destroy();
-    this._thumbnails = null;
-
-    await Promise.all(this.renderers.map((pr) => pr.cancel().catch(() => {})));
-    for (const pr of this.renderers) pr.wrapper.remove();
-    this.renderers = [];
-    this._rendererByWrapper.clear();
-    this._slotByRenderer.clear();
-    this._pageRatios.clear();
+  // Create an IntersectionObserver rooted at the scroll container and observe
+  // every page wrapper with it.
+  _observePages(callback, options) {
+    const observer = new IntersectionObserver(callback, {
+      root: this._scrollRoot,
+      ...options,
+    });
+    for (const pr of this.renderers) observer.observe(pr.wrapper);
+    return observer;
   }
+
+  _setupPageObserver() {
+    this._pageRatios = new Map();
+    this._pageObserver = this._observePages(
+      (entries) => this._onPageIntersection(entries),
+      { threshold: PAGE_VISIBILITY_THRESHOLDS }
+    );
+  }
+
+  _onPageIntersection(entries) {
+    for (const entry of entries) {
+      const pr = this._rendererByWrapper.get(entry.target);
+      const slot = pr ? this._slotByRenderer.get(pr) : undefined;
+      if (slot) this._pageRatios.set(slot, entry.intersectionRatio);
+    }
+    if (this._scrollingTo) return;
+
+    let bestPage = 1;
+    let bestRatio = 0;
+    for (const [n, r] of this._pageRatios) {
+      if (r > bestRatio) {
+        bestRatio = r;
+        bestPage = n;
+      }
+    }
+    if (bestPage !== this._currentPage) {
+      this._currentPage = bestPage;
+      this._toolbar?.updateNav(this._currentPage, this.renderers.length);
+      this._thumbnails?.updateCurrentPage(this._currentPage);
+    }
+  }
+
+  _setupLazyObserver() {
+    this._lazyObserver = this._observePages(
+      (entries) => this._onLazyIntersection(entries),
+      { rootMargin: LAZY_RENDER_MARGIN }
+    );
+  }
+
+  _onLazyIntersection(entries) {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      const pr = this._rendererByWrapper.get(entry.target);
+      pr?.render()
+        .then(() => this._search?.applyToPage(pr))
+        .catch((e) => {
+          if (e?.name !== "RenderingCancelledException") console.error(e);
+        });
+    }
+  }
+
+  _setupDiscardObserver() {
+    this._discardObserver = this._observePages(
+      (entries) => this._onDiscardIntersection(entries),
+      { rootMargin: DISCARD_RENDER_MARGIN }
+    );
+  }
+
+  _onDiscardIntersection(entries) {
+    for (const entry of entries) {
+      if (entry.isIntersecting) continue;
+      const pr = this._rendererByWrapper.get(entry.target);
+      if (pr?.isRendered) pr.discard();
+    }
+  }
+
+  // ── Page ordering ───────────────────────────────────────────────────────────
 
   _computeSlots() {
     const total = this.pdf.numPages;
@@ -370,6 +557,8 @@ export class PdfViewer {
     return this._buildVisiblePages();
   }
 
+  // ── Custom annotations ──────────────────────────────────────────────────────
+
   setCustomAnnotations(list) {
     this._customAnnotations = list ?? [];
     if (this.pdf) this._distributeCustomAnnotations();
@@ -381,67 +570,13 @@ export class PdfViewer {
       : [];
     for (const pr of this.renderers) {
       const subset = list.filter(
-        (a) => a && (Math.floor(Number(a.page)) || 1) === pr.pageNumber,
+        (a) => a && (Math.floor(Number(a.page)) || 1) === pr.pageNumber
       );
       pr.setCustomAnnotations(subset);
     }
   }
 
-  _goToPdfPage(pdfPageNum) {
-    const idx = this.renderers.findIndex((r) => r.pageNumber === pdfPageNum);
-    if (idx >= 0) this.goToPage(idx + 1);
-  }
-
-  async destroy() {
-    this._loadGen++; // invalidate any in-flight load() so it stops and self-cleans
-    this._loading?.destroy();
-    this._loading = null;
-    await this._unload();
-  }
-
-  async _unload() {
-    this._cacheToken++; // cancel any in-flight full-cache render pass
-    (this._scrollRoot ?? window).removeEventListener("wheel", this._onWheel);
-    window.removeEventListener("keydown", this._onKeyDown);
-    this._observer?.disconnect();
-    this._observer = null;
-    this._lazyObserver?.disconnect();
-    this._lazyObserver = null;
-    this._discardObserver?.disconnect();
-    this._discardObserver = null;
-    this._pageObserver?.disconnect();
-    this._pageObserver = null;
-    clearTimeout(this._resizeTimer);
-    clearTimeout(this._scrollingToTimer);
-
-    this._toolbar?.destroy();
-    this._toolbar = null;
-    this._search?.destroy();
-    this._search = null;
-    this._thumbnails?.destroy();
-    this._thumbnails = null;
-
-    await Promise.all(this.renderers.map((pr) => pr.cancel().catch(() => {})));
-    for (const pr of this.renderers) pr.wrapper.remove();
-    this.renderers = [];
-    this._rendererByWrapper.clear();
-    this._slotByRenderer.clear();
-    this._pageRatios.clear();
-
-    this._contentRow?.remove();
-    this._contentRow = null;
-    this._pagesCol = null;
-    this._scrollWrapper?.remove();
-    this._scrollWrapper = null;
-    this._bodyRow?.remove();
-    this._bodyRow = null;
-    this._scrollRoot = null;
-
-    const loadingTask = this._loadingTask;
-    this._loadingTask = null;
-    this.pdf = null;
-    await loadingTask?.destroy();
-  }
+  // ── Zoom ────────────────────────────────────────────────────────────────────
 
   setZoom(value) {
     if (value === "fit-width") {
@@ -452,9 +587,7 @@ export class PdfViewer {
       this._zoomMode = "explicit";
       this._explicitScale = value;
     }
-    const anchor = this._captureScrollAnchor();
-    return this._applyScale().then(() => {
-      this._restoreScrollAnchor(anchor);
+    return this._reflowPreservingAnchor(() => {
       this._toolbar?.updateZoom(this._effectiveScale());
       this._toolbar?.updateFitWidth(this._zoomMode === "fit-width");
       this._toolbar?.updateFitPage(this._zoomMode === "fit-page");
@@ -463,13 +596,13 @@ export class PdfViewer {
 
   zoomIn() {
     const current = this._effectiveScale();
-    const next = ZOOM_STEPS.find((s) => s > current + 0.01);
+    const next = ZOOM_STEPS.find((s) => s > current + ZOOM_EPSILON);
     if (next !== undefined) return this.setZoom(next);
   }
 
   zoomOut() {
     const current = this._effectiveScale();
-    const prev = [...ZOOM_STEPS].reverse().find((s) => s < current - 0.01);
+    const prev = [...ZOOM_STEPS].reverse().find((s) => s < current - ZOOM_EPSILON);
     if (prev !== undefined) return this.setZoom(prev);
   }
 
@@ -477,98 +610,9 @@ export class PdfViewer {
     return { mode: this._zoomMode, scale: this._effectiveScale() };
   }
 
-  rotateClockwise() {
-    this._rotation = (this._rotation + 90) % 360;
-    return this._applyRotation();
-  }
-
-  rotateCounterclockwise() {
-    this._rotation = (this._rotation + 270) % 360;
-    return this._applyRotation();
-  }
-
-  getRotation() {
-    return this._rotation;
-  }
-
-  _applyRotation() {
-    const anchor = this._captureScrollAnchor();
-    return this._applyScale().then(() => {
-      this._thumbnails?.setRotation(this._rotation);
-      this._restoreScrollAnchor(anchor);
-      this._toolbar?.updateZoom(this._effectiveScale());
-    });
-  }
-
-  goToPage(n) {
-    const total = this.renderers.length;
-    if (total === 0) return;
-    n = Math.max(1, Math.min(total, Math.floor(n)));
-    const pr = this.renderers[n - 1];
-    if (!pr) return;
-    this._scrollingTo = true;
-    clearTimeout(this._scrollingToTimer);
-    this._scrollingToTimer = setTimeout(() => {
-      this._scrollingTo = false;
-    }, 600);
-    this._currentPage = n;
-    this._toolbar?.updateNav(this._currentPage, total);
-    this._thumbnails?.updateCurrentPage(n);
-    pr.wrapper.scrollIntoView({ behavior: this._scrollBehavior, block: "start" });
-  }
-
-  setScrollBehavior(behavior) {
-    this._scrollBehavior = behavior === "instant" ? "instant" : "smooth";
-    this._search?.setScrollBehavior(this._scrollBehavior);
-  }
-
-  getScrollBehavior() {
-    return this._scrollBehavior;
-  }
-
-  getCurrentPage() {
-    return this._currentPage;
-  }
-
-  getPageCount() {
-    return this.renderers.length;
-  }
-
-  search(query, opts) {
-    return this._search?.search(query, opts);
-  }
-
-  nextMatch() {
-    return this._search?.nextMatch();
-  }
-
-  prevMatch() {
-    return this._search?.prevMatch();
-  }
-
-  toggleThumbnails() {
-    this._thumbnailsActive = !this._thumbnailsActive;
-    if (this._thumbnailsActive) this._thumbnails?.show();
-    else this._thumbnails?.hide();
-    this._toolbar?.updateThumbnails(this._thumbnailsActive);
-  }
-
-  _effectiveScale() {
-    if (this._zoomMode === "explicit") return this._explicitScale;
-    if (this.renderers.length) {
-      const pr0 = this.renderers[0];
-      return pr0._intendedScale ?? this._scaleFor(pr0);
-    }
-    return this._explicitScale;
-  }
-
-  _scaleFor(renderer) {
-    if (this._zoomMode === "fit-width")
-      return this._fitScaleFor(renderer, this._lastWidth);
-    if (this._zoomMode === "fit-page") return this._fitPageScaleFor(renderer);
-    return this._explicitScale;
-  }
-
+  // Re-layout every page at the current scale/rotation. In cache mode this lays
+  // out synchronously then repaints in the background; otherwise it re-renders
+  // the already-rendered pages and lets the lazy observer handle the rest.
   async _applyScale() {
     const rotation = this._rotation;
     if (this._cacheFullPdf) {
@@ -594,51 +638,105 @@ export class PdfViewer {
     );
   }
 
-  _measureContentWidth() {
-    const target = this._pagesCol ?? this.host;
-    const cs = getComputedStyle(target);
-    const padL = parseFloat(cs.paddingLeft) || 0;
-    const padR = parseFloat(cs.paddingRight) || 0;
-    return target.clientWidth - padL - padR;
+  _effectiveScale() {
+    if (this._zoomMode === "explicit") return this._explicitScale;
+    if (this.renderers.length) {
+      const pr0 = this.renderers[0];
+      return pr0._intendedScale ?? this._scaleFor(pr0);
+    }
+    return this._explicitScale;
+  }
+
+  _scaleFor(renderer) {
+    if (this._zoomMode === "fit-width")
+      return this._fitScaleFor(renderer, this._lastWidth);
+    if (this._zoomMode === "fit-page") return this._fitPageScaleFor(renderer);
+    return this._explicitScale;
   }
 
   _fitScaleFor(renderer, width) {
-    return Math.max(width / renderer.nativeWidthFor(this._rotation), 0.1);
+    return Math.max(width / renderer.nativeWidthFor(this._rotation), MIN_SCALE);
   }
 
   _fitPageScaleFor(renderer) {
     const byHeight = this._lastHeight / renderer.nativeHeightFor(this._rotation);
     const byWidth = this._fitScaleFor(renderer, this._lastWidth);
-    return Math.max(Math.min(byHeight, byWidth), 0.1);
+    return Math.max(Math.min(byHeight, byWidth), MIN_SCALE);
   }
 
-  _setupPageObserver() {
-    this._pageRatios = new Map();
-    this._pageObserver = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const pr = this._rendererByWrapper.get(entry.target);
-          const slot = pr ? this._slotByRenderer.get(pr) : undefined;
-          if (slot) this._pageRatios.set(slot, entry.intersectionRatio);
-        }
-        if (this._scrollingTo) return;
-        let bestPage = 1;
-        let bestRatio = 0;
-        for (const [n, r] of this._pageRatios) {
-          if (r > bestRatio) {
-            bestRatio = r;
-            bestPage = n;
-          }
-        }
-        if (bestPage !== this._currentPage) {
-          this._currentPage = bestPage;
-          this._toolbar?.updateNav(this._currentPage, this.renderers.length);
-          this._thumbnails?.updateCurrentPage(this._currentPage);
-        }
-      },
-      { root: this._scrollRoot, threshold: [0, 0.25, 0.5, 0.75, 1] }
-    );
-    for (const pr of this.renderers) this._pageObserver.observe(pr.wrapper);
+  // ── Rotation ────────────────────────────────────────────────────────────────
+
+  rotateClockwise() {
+    this._rotation = (this._rotation + 90) % 360;
+    return this._applyRotation();
+  }
+
+  rotateCounterclockwise() {
+    this._rotation = (this._rotation + 270) % 360;
+    return this._applyRotation();
+  }
+
+  getRotation() {
+    return this._rotation;
+  }
+
+  _applyRotation() {
+    return this._reflowPreservingAnchor(() => {
+      this._thumbnails?.setRotation(this._rotation);
+      this._toolbar?.updateZoom(this._effectiveScale());
+    });
+  }
+
+  // ── Navigation & scroll ─────────────────────────────────────────────────────
+
+  goToPage(n) {
+    const total = this.renderers.length;
+    if (total === 0) return;
+    n = Math.max(1, Math.min(total, Math.floor(n)));
+    const pr = this.renderers[n - 1];
+    if (!pr) return;
+    // Suppress observer-driven page changes while the smooth scroll animates.
+    this._scrollingTo = true;
+    clearTimeout(this._scrollingToTimer);
+    this._scrollingToTimer = setTimeout(() => {
+      this._scrollingTo = false;
+    }, SCROLL_SUPPRESS_MS);
+    this._currentPage = n;
+    this._toolbar?.updateNav(this._currentPage, total);
+    this._thumbnails?.updateCurrentPage(n);
+    pr.wrapper.scrollIntoView({ behavior: this._scrollBehavior, block: "start" });
+  }
+
+  _goToPdfPage(pdfPageNum) {
+    const idx = this.renderers.findIndex((r) => r.pageNumber === pdfPageNum);
+    if (idx >= 0) this.goToPage(idx + 1);
+  }
+
+  getCurrentPage() {
+    return this._currentPage;
+  }
+
+  getPageCount() {
+    return this.renderers.length;
+  }
+
+  setScrollBehavior(behavior) {
+    this._scrollBehavior = behavior === "instant" ? "instant" : "smooth";
+    this._search?.setScrollBehavior(this._scrollBehavior);
+  }
+
+  getScrollBehavior() {
+    return this._scrollBehavior;
+  }
+
+  // Keep the page under the viewport's top edge fixed across a re-layout: note
+  // the anchor before re-scaling, then scroll so it lands in the same place.
+  _reflowPreservingAnchor(afterReflow) {
+    const anchor = this._captureScrollAnchor();
+    return this._applyScale().then(() => {
+      this._restoreScrollAnchor(anchor);
+      afterReflow();
+    });
   }
 
   _captureScrollAnchor() {
@@ -660,74 +758,117 @@ export class PdfViewer {
     this._scrollRoot.scrollTop += anchorY - rootTop;
   }
 
-  _setupLazyObserver() {
-    this._lazyObserver = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          const pr = this._rendererByWrapper.get(entry.target);
-          pr?.render()
-            .then(() => this._search?.applyToPage(pr))
-            .catch((e) => {
-              if (e?.name !== "RenderingCancelledException") console.error(e);
-            });
-        }
-      },
-      { root: this._scrollRoot, rootMargin: "200px" }
-    );
-    for (const pr of this.renderers) this._lazyObserver.observe(pr.wrapper);
+  // ── Search ──────────────────────────────────────────────────────────────────
+
+  search(query, opts) {
+    return this._search?.search(query, opts);
   }
 
-  _setupDiscardObserver() {
-    this._discardObserver = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) continue;
-          const pr = this._rendererByWrapper.get(entry.target);
-          if (pr?.isRendered) pr.discard();
-        }
-      },
-      { root: this._scrollRoot, rootMargin: "1500px" }
-    );
-    for (const pr of this.renderers) this._discardObserver.observe(pr.wrapper);
+  nextMatch() {
+    return this._search?.nextMatch();
   }
+
+  prevMatch() {
+    return this._search?.prevMatch();
+  }
+
+  // ── Thumbnails ──────────────────────────────────────────────────────────────
+
+  toggleThumbnails() {
+    this._thumbnailsActive = !this._thumbnailsActive;
+    if (this._thumbnailsActive) this._thumbnails?.show();
+    else this._thumbnails?.hide();
+    this._toolbar?.updateThumbnails(this._thumbnailsActive);
+  }
+
+  // ── Resize handling ─────────────────────────────────────────────────────────
 
   _observe() {
     const widthTarget = this._pagesCol ?? this.host;
-    this._observer = new ResizeObserver((entries) => {
-      let widthChanged = false;
-      let heightChanged = false;
-      for (const entry of entries) {
-        if (entry.target === widthTarget) {
-          const w =
-            entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
-          if (Math.abs(w - this._lastWidth) >= 1) {
-            this._lastWidth = w;
-            widthChanged = true;
-          }
-        } else if (entry.target === this._scrollRoot) {
-          const h =
-            entry.contentBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
-          if (Math.abs(h - this._lastHeight) >= 1) {
-            this._lastHeight = h;
-            heightChanged = true;
-          }
-        }
-      }
-      const relevant =
-        (this._zoomMode === "fit-width" && widthChanged) ||
-        (this._zoomMode === "fit-page" && (heightChanged || widthChanged));
-      if (!relevant) return;
-      clearTimeout(this._resizeTimer);
-      this._resizeTimer = setTimeout(() => {
-        this._applyScale().then(() =>
-          this._toolbar?.updateZoom(this._effectiveScale())
-        );
-      }, 150);
-    });
+    this._observer = new ResizeObserver((entries) =>
+      this._onResize(entries, widthTarget)
+    );
     this._observer.observe(widthTarget);
     if (this._scrollRoot && this._scrollRoot !== widthTarget) {
       this._observer.observe(this._scrollRoot);
+    }
+  }
+
+  _onResize(entries, widthTarget) {
+    let widthChanged = false;
+    let heightChanged = false;
+    for (const entry of entries) {
+      if (entry.target === widthTarget) {
+        const w =
+          entry.contentBoxSize?.[0]?.inlineSize ?? entry.contentRect.width;
+        if (Math.abs(w - this._lastWidth) >= 1) {
+          this._lastWidth = w;
+          widthChanged = true;
+        }
+      } else if (entry.target === this._scrollRoot) {
+        const h =
+          entry.contentBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+        if (Math.abs(h - this._lastHeight) >= 1) {
+          this._lastHeight = h;
+          heightChanged = true;
+        }
+      }
+    }
+    const relevant =
+      (this._zoomMode === "fit-width" && widthChanged) ||
+      (this._zoomMode === "fit-page" && (heightChanged || widthChanged));
+    if (!relevant) return;
+    clearTimeout(this._resizeTimer);
+    this._resizeTimer = setTimeout(() => {
+      this._applyScale().then(() =>
+        this._toolbar?.updateZoom(this._effectiveScale())
+      );
+    }, RESIZE_DEBOUNCE_MS);
+  }
+
+  _measureContentWidth() {
+    const target = this._pagesCol ?? this.host;
+    const cs = getComputedStyle(target);
+    const padL = parseFloat(cs.paddingLeft) || 0;
+    const padR = parseFloat(cs.paddingRight) || 0;
+    return target.clientWidth - padL - padR;
+  }
+
+  // ── Input handlers ──────────────────────────────────────────────────────────
+
+  _handleWheelZoom(e) {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    const now = Date.now();
+    if (now - this._lastWheelZoom < WHEEL_ZOOM_THROTTLE_MS) return;
+    this._lastWheelZoom = now;
+    if (e.deltaY < 0) this.zoomIn();
+    else if (e.deltaY > 0) this.zoomOut();
+  }
+
+  _handleShortcut(e) {
+    const key = e.key.toLowerCase();
+    if ((e.metaKey || e.ctrlKey) && key === "f") {
+      if (!this.host.contains(document.activeElement)) return;
+      e.preventDefault();
+      this._toolbar?.focusSearch();
+      return;
+    }
+    if (
+      (e.metaKey || e.ctrlKey) &&
+      (key === "+" || key === "=" || key === "-" || key === "_")
+    ) {
+      if (!this.host.contains(document.activeElement)) return;
+      e.preventDefault();
+      if (key === "-" || key === "_") this.zoomOut();
+      else this.zoomIn();
+      return;
+    }
+    if (key === "escape" && this._toolbar?.isSearchFocused()) {
+      e.preventDefault();
+      this._toolbar.clearSearch();
+      this.search("");
+      this._scrollRoot?.focus();
     }
   }
 
@@ -740,5 +881,4 @@ export class PdfViewer {
       ".textLayer :is(span,br)::selection{background:Highlight;}";
     document.head.appendChild(style);
   }
-
 }
