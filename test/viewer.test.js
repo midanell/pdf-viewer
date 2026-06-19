@@ -411,6 +411,26 @@ describe("zoom", () => {
     expect(viewer.getZoom().mode).toBe("fit-width");
   });
 
+  it("a superseded zoom pass yields to the latest (no stale reflow)", async () => {
+    const { viewer } = await loadViewer();
+    const restoreSpy = vi.spyOn(viewer, "_restoreScrollAnchor");
+
+    // Two rapid zooms without awaiting the first (mirrors the toolbar / keyboard
+    // zoom callers, which don't await). The older pass must bail.
+    const first = viewer.setZoom(2.0);
+    const second = viewer.setZoom(3.0);
+    await Promise.all([first, second]);
+
+    // Only the winning (latest) pass restores the scroll anchor.
+    expect(restoreSpy).toHaveBeenCalledTimes(1);
+    expect(viewer.getZoom().scale).toBe(3.0);
+    for (const pr of viewer.renderers) {
+      expect(pr.setSize).toHaveBeenLastCalledWith(
+        expect.objectContaining({ scale: 3.0 })
+      );
+    }
+  });
+
   it("zoomIn / zoomOut walk the zoom steps and clamp at the ends", async () => {
     const { viewer } = await loadViewer();
 

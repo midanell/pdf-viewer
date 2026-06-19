@@ -61,6 +61,9 @@ export class PdfViewer {
     this._loadGen = 0;
     // Bumped to cancel an in-flight full-cache render pass.
     this._cacheToken = 0;
+    // Bumped to cancel an in-flight non-cache _applyScale() pass so rapid zooms
+    // don't overlap and race on each renderer's shared render state.
+    this._scaleToken = 0;
 
     // Renderers + lookup maps
     this.renderers = [];
@@ -380,6 +383,7 @@ export class PdfViewer {
   // rebuild (_teardownPages) and a full unload (_unload).
   async _disposePages() {
     this._cacheToken++; // cancel any in-flight full-cache render pass
+    this._scaleToken++; // cancel any in-flight non-cache _applyScale() pass
     this._pageObserver?.disconnect();
     this._lazyObserver?.disconnect();
     this._discardObserver?.disconnect();
@@ -622,8 +626,11 @@ export class PdfViewer {
         pr.setSize({ scale: this._scaleFor(pr), rotation });
       }
       this._renderAllCached();
-      return;
+      return true;
     }
+    // Rapid zooms can call _applyScale() repeatedly without awaiting; tag this
+    // pass so a superseded one stops before re-laying-out for a stale scale.
+    const token = ++this._scaleToken;
     await Promise.all(
       this.renderers.map((pr) => {
         const scale = this._scaleFor(pr);
@@ -636,6 +643,7 @@ export class PdfViewer {
         return Promise.resolve();
       })
     );
+    return token === this._scaleToken;
   }
 
   _effectiveScale() {
@@ -733,7 +741,10 @@ export class PdfViewer {
   // the anchor before re-scaling, then scroll so it lands in the same place.
   _reflowPreservingAnchor(afterReflow) {
     const anchor = this._captureScrollAnchor();
-    return this._applyScale().then(() => {
+    return this._applyScale().then((current) => {
+      // A newer reflow superseded this one mid-flight; it owns the final layout
+      // and chrome update, so don't fight it by restoring this pass's anchor.
+      if (!current) return;
       this._restoreScrollAnchor(anchor);
       afterReflow();
     });
@@ -820,9 +831,9 @@ export class PdfViewer {
     if (!relevant) return;
     clearTimeout(this._resizeTimer);
     this._resizeTimer = setTimeout(() => {
-      this._applyScale().then(() =>
-        this._toolbar?.updateZoom(this._effectiveScale())
-      );
+      this._applyScale().then((current) => {
+        if (current) this._toolbar?.updateZoom(this._effectiveScale());
+      });
     }, RESIZE_DEBOUNCE_MS);
   }
 
