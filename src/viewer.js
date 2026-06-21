@@ -64,6 +64,9 @@ export class PdfViewer {
     // Bumped to cancel an in-flight non-cache _applyScale() pass so rapid zooms
     // don't overlap and race on each renderer's shared render state.
     this._scaleToken = 0;
+    // Bumped on every page (re)build / unload so a superseded _buildVisiblePages
+    // (e.g. overlapping setPageOrder calls) bails instead of corrupting state.
+    this._buildGen = 0;
 
     // Renderers + lookup maps
     this.renderers = [];
@@ -205,6 +208,7 @@ export class PdfViewer {
   }
 
   async _unload() {
+    this._buildGen++; // stop any in-flight _buildVisiblePages from mutating state
     (this._scrollRoot ?? window).removeEventListener("wheel", this._onWheel);
     window.removeEventListener("keydown", this._onKeyDown);
     this._observer?.disconnect();
@@ -317,9 +321,20 @@ export class PdfViewer {
   // ── Page build & teardown ───────────────────────────────────────────────────
 
   async _buildVisiblePages() {
+    // Tag this build so a newer one (an overlapping setPageOrder, a reload, or
+    // destroy) can supersede it: each await below re-checks the generation and
+    // bails before mutating shared state the winning build now owns.
+    const gen = ++this._buildGen;
     await this._teardownPages();
+    if (gen !== this._buildGen) return;
 
-    await this._instantiateRenderers(this._computeSlots());
+    const newRenderers = await this._instantiateRenderers(this._computeSlots());
+    if (gen !== this._buildGen) return;
+
+    this.renderers = newRenderers;
+    this._rendererByWrapper = new Map(newRenderers.map((pr) => [pr.wrapper, pr]));
+    this._slotByRenderer = new Map(newRenderers.map((pr, i) => [pr, i + 1]));
+
     this._mountRenderers();
     this._distributeCustomAnnotations();
     this._createSearchAndThumbnails();
@@ -327,25 +342,21 @@ export class PdfViewer {
     if (this.renderers[0]) {
       await this.renderers[0].render();
     }
+    if (gen !== this._buildGen) return;
     this._toolbar?.updateZoom(this._effectiveScale());
 
     this._startRenderPipeline();
 
     this._currentPage = 1;
+    if (this._scrollRoot) this._scrollRoot.scrollTop = 0;
     this._toolbar?.updateNav(this._currentPage, this.renderers.length);
     this._thumbnails?.updateCurrentPage(this._currentPage);
   }
 
   async _instantiateRenderers(slots) {
     const pages = await Promise.all(slots.map((n) => this.pdf.getPage(n)));
-    this.renderers = pages.map(
+    return pages.map(
       (page) => new PageRenderer(page, { linkService: this.linkService })
-    );
-    this._rendererByWrapper = new Map(
-      this.renderers.map((pr) => [pr.wrapper, pr])
-    );
-    this._slotByRenderer = new Map(
-      this.renderers.map((pr, i) => [pr, i + 1])
     );
   }
 
@@ -396,12 +407,18 @@ export class PdfViewer {
     this._thumbnails?.destroy();
     this._thumbnails = null;
 
-    await Promise.all(this.renderers.map((pr) => pr.cancel().catch(() => {})));
-    for (const pr of this.renderers) pr.wrapper.remove();
+    // Capture and clear before the await so concurrent code (_reorderPages, a
+    // new load) that reads this.renderers sees an empty list, and the post-await
+    // cleanup operates on the right (pre-teardown) set regardless of what
+    // concurrent code may have written to this.renderers in the meantime.
+    const renderers = this.renderers;
     this.renderers = [];
     this._rendererByWrapper.clear();
     this._slotByRenderer.clear();
     this._pageRatios.clear();
+
+    await Promise.all(renderers.map((pr) => pr.cancel().catch(() => {})));
+    for (const pr of renderers) pr.wrapper.remove();
   }
 
   // ── Render scheduling ───────────────────────────────────────────────────────
@@ -554,11 +571,98 @@ export class PdfViewer {
     return [...reorder, ...natural];
   }
 
+  // Fast reorder: reuse existing PageRenderer instances so already-rendered
+  // canvases are preserved — no spinners for pages that were already painted.
+  async _reorderPages() {
+    const gen = ++this._buildGen;
+
+    // Cancel in-flight render passes; do not destroy rendered canvases.
+    this._cacheToken++;
+    this._scaleToken++;
+    this._pageObserver?.disconnect();
+    this._lazyObserver?.disconnect();
+    this._discardObserver?.disconnect();
+    this._pageObserver = null;
+    this._lazyObserver = null;
+    this._discardObserver = null;
+
+    const newSlots = this._computeSlots();
+    const prevRenderers = this.renderers;
+    const existingByPage = new Map(prevRenderers.map((pr) => [pr.pageNumber, pr]));
+
+    // Clear shared state before any await so concurrent code sees a clean slate.
+    this.renderers = [];
+    this._rendererByWrapper.clear();
+    this._slotByRenderer.clear();
+    this._pageRatios.clear();
+
+    // Fetch only pages not already instantiated.
+    const neededNew = newSlots.filter((n) => !existingByPage.has(n));
+    if (neededNew.length) {
+      const pages = await Promise.all(neededNew.map((n) => this.pdf.getPage(n)));
+      if (gen !== this._buildGen) return;
+      for (let i = 0; i < neededNew.length; i++) {
+        existingByPage.set(
+          neededNew[i],
+          new PageRenderer(pages[i], { linkService: this.linkService })
+        );
+      }
+    }
+
+    // Remove pages no longer in the new order.
+    const newSlotSet = new Set(newSlots);
+    for (const pr of prevRenderers) {
+      if (!newSlotSet.has(pr.pageNumber)) {
+        pr.cancel().catch(() => {});
+        pr.wrapper.remove();
+      }
+    }
+
+    // Build new renderer list and update wrapper margins.
+    const newRenderers = newSlots.map((n) => existingByPage.get(n));
+    newRenderers.forEach((pr, i, arr) => {
+      pr.wrapper.style.marginLeft = "auto";
+      pr.wrapper.style.marginRight = "auto";
+      pr.wrapper.style.marginBottom =
+        i === arr.length - 1 ? "0" : this._pageMargin;
+    });
+
+    // Size any newly instantiated renderers.
+    for (const n of neededNew) {
+      const pr = existingByPage.get(n);
+      pr.setSize({ scale: this._scaleFor(pr), rotation: this._rotation });
+    }
+
+    // Reorder DOM without clearing canvas contents.
+    this._pagesCol.replaceChildren(...newRenderers.map((pr) => pr.wrapper));
+
+    this.renderers = newRenderers;
+    this._rendererByWrapper = new Map(newRenderers.map((pr) => [pr.wrapper, pr]));
+    this._slotByRenderer = new Map(newRenderers.map((pr, i) => [pr, i + 1]));
+
+    // Rebuild order-sensitive collaborators.
+    this._search?.destroy();
+    this._search = null;
+    this._thumbnails?.destroy();
+    this._thumbnails = null;
+    this._distributeCustomAnnotations();
+    this._createSearchAndThumbnails();
+
+    // Restart pipeline; already-rendered pages skip re-rendering via render()'s
+    // early-return (same scale + rotation + no active task).
+    this._startRenderPipeline();
+
+    this._currentPage = 1;
+    if (this._scrollRoot) this._scrollRoot.scrollTop = 0;
+    this._toolbar?.updateNav(this._currentPage, this.renderers.length);
+    this._thumbnails?.updateCurrentPage(this._currentPage);
+  }
+
   setPageOrder(order, opts = {}) {
     this._pageOrder = order ?? [];
     this._hideUnordered = !!opts.hideUnordered;
     if (!this.pdf) return Promise.resolve();
-    return this._buildVisiblePages();
+    return this._reorderPages();
   }
 
   // ── Custom annotations ──────────────────────────────────────────────────────

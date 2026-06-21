@@ -2,12 +2,16 @@ import { PdfViewer } from "../src/viewer.js";
 
 // ── Option helpers ────────────────────────────────────────────────────────────
 
-function getOpts() {
-  const pageOrderRaw = document.getElementById("opt-page-order").value;
-  const pageOrder = pageOrderRaw
-    .split(",")
+function parsePageOrder() {
+  return document
+    .getElementById("opt-page-order")
+    .value.split(",")
     .map((s) => parseInt(s.trim(), 10))
     .filter((n) => Number.isFinite(n) && n > 0);
+}
+
+function getOpts() {
+  const pageOrder = parsePageOrder();
 
   return {
     cacheFullPdf: document.getElementById("opt-cache").checked,
@@ -50,16 +54,10 @@ async function rebuild() {
 
 // ── Wire controls ─────────────────────────────────────────────────────────────
 
-// All controls trigger a full rebuild so the effect of each option is
-// immediately obvious. Controls that support runtime updates (scrollBehavior,
-// pageOrder) could call viewer setters instead, but rebuilding keeps the demo
-// code simple and makes the option's impact unambiguous.
-const rebuildInputs = [
-  "opt-cache",
-  "opt-zoom-ctrl",
-  "opt-hide-unordered",
-  "opt-native-sel",
-];
+// Constructor-only options (they change how the viewer is built) trigger a full
+// rebuild. Page ordering is applied live via the public setPageOrder() setter —
+// no reload needed — see applyPageOrder() below.
+const rebuildInputs = ["opt-cache", "opt-zoom-ctrl", "opt-native-sel"];
 for (const id of rebuildInputs) {
   document.getElementById(id).addEventListener("change", rebuild);
 }
@@ -70,15 +68,26 @@ for (const el of document.querySelectorAll('input[name="scroll"]')) {
   el.addEventListener("change", rebuild);
 }
 
-// Page order: rebuild on Enter or when focus leaves the input
+// Apply the current page-order input + "hide unordered" flag live, without
+// reloading the PDF, via the public setter.
+function applyPageOrder() {
+  if (!viewer?.pdf) return;
+  const hideUnordered = document.getElementById("opt-hide-unordered").checked;
+  return viewer.setPageOrder(parsePageOrder(), { hideUnordered });
+}
+
+// Page order: apply on Enter or when focus leaves the input.
 const pageOrderInput = document.getElementById("opt-page-order");
 pageOrderInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") { e.preventDefault(); rebuild(); }
+  if (e.key === "Enter") { e.preventDefault(); applyPageOrder(); }
 });
-pageOrderInput.addEventListener("blur", rebuild);
+pageOrderInput.addEventListener("blur", applyPageOrder);
+document
+  .getElementById("opt-hide-unordered")
+  .addEventListener("change", applyPageOrder);
 
 // Random page order: pick up to 10 unique pages (capped at the document's
-// page count) in random order, then rebuild to apply them.
+// page count) in random order, then apply them live.
 function randomPageOrder() {
   const total = viewer?.pdf?.numPages ?? 10;
   const count = Math.min(10, total, 1 + Math.floor(Math.random() * 10));
@@ -92,7 +101,7 @@ function randomPageOrder() {
 
 document.getElementById("opt-page-order-rand").addEventListener("click", () => {
   pageOrderInput.value = randomPageOrder().join(",");
-  rebuild();
+  applyPageOrder();
 });
 
 // ── Custom annotations ────────────────────────────────────────────────────────

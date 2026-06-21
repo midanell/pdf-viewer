@@ -563,6 +563,58 @@ describe("page ordering", () => {
     const { viewer } = mountViewer();
     await expect(viewer.setPageOrder([2, 1])).resolves.toBeUndefined();
   });
+
+  it("reordering reuses existing PageRenderer instances without re-rendering", async () => {
+    const { viewer } = await loadViewer({}, { numPages: 3 });
+    const originalRenderers = [...viewer.renderers];
+    const rendererCountBefore = reg.pageRenderers.length;
+    for (const pr of viewer.renderers) pr.render.mockClear();
+
+    await viewer.setPageOrder([3, 1, 2]);
+
+    // No new PageRenderer instances were created — the originals are reused.
+    expect(reg.pageRenderers.length).toBe(rendererCountBefore);
+    expect(viewer.renderers[0]).toBe(originalRenderers[2]); // page 3
+    expect(viewer.renderers[1]).toBe(originalRenderers[0]); // page 1
+    expect(viewer.renderers[2]).toBe(originalRenderers[1]); // page 2
+    // In lazy mode the pipeline does not call render() — no re-rendering.
+    for (const pr of originalRenderers) expect(pr.render).not.toHaveBeenCalled();
+    expect(pageNumbers(viewer)).toEqual([3, 1, 2]);
+  });
+
+  it("an in-flight load is superseded by setPageOrder (no duplicate collaborators)", async () => {
+    // Gate pdf.getPage so _buildVisiblePages is suspended in _instantiateRenderers
+    // when setPageOrder bumps _buildGen. Without the guard the bailed build would
+    // resume and create a second search/thumbnails instance.
+    reg.manual = true;
+    const { viewer } = mountViewer();
+
+    const pdf = makePdf(4);
+    let release;
+    const gate = new Promise((r) => (release = r));
+    const realGetPage = pdf.getPage;
+    pdf.getPage = vi.fn(async (n) => { await gate; return realGetPage(n); });
+
+    const searchesBefore = reg.searches.length;
+    const thumbsBefore = reg.thumbnails.length;
+
+    const loadPromise = viewer.load("doc.pdf");
+    reg.loadingTasks[0]._resolve(pdf);
+    // Tick 1: _openDocument resolves, _buildVisiblePages starts, awaits _teardownPages.
+    // Tick 2: _teardownPages completes, _instantiateRenderers hits the gated getPage.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // setPageOrder bumps _buildGen — the stale _buildVisiblePages will bail.
+    const orderPromise = viewer.setPageOrder([3, 1, 2]);
+    release();
+    await Promise.all([loadPromise, orderPromise]);
+
+    expect(reg.searches.length - searchesBefore).toBe(1);
+    expect(reg.thumbnails.length - thumbsBefore).toBe(1);
+    expect(pageNumbers(viewer)).toEqual([3, 1, 2, 4]);
+    expect(viewer._pagesCol.children.length).toBe(viewer.renderers.length);
+  });
 });
 
 // ── Custom annotations ────────────────────────────────────────────────────────
