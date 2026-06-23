@@ -236,6 +236,12 @@
         min-height: 0;
       }
 
+      #mozilla-frame {
+        flex: 1;
+        min-height: 0;
+        border: none;
+      }
+
       #pdf-host [data-page-number] {
         display: block;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
@@ -245,6 +251,19 @@
   <body>
     <aside id="sidebar">
       <h1 class="sidebar-title">PDF Viewer Demo</h1>
+
+      <!-- Viewer toggle -->
+      <div class="ctrl-group">
+        <div class="ctrl-group-label">Viewer</div>
+        <button
+          type="button"
+          id="viewer-toggle"
+          class="ctrl-btn"
+          style="width: 100%; padding: 5px 9px"
+        >
+          Switch to Mozilla
+        </button>
+      </div>
 
       <!-- Rendering -->
       <div class="ctrl-group">
@@ -376,6 +395,12 @@
 
     <main id="main">
       <div id="pdf-host"></div>
+      <iframe
+        id="mozilla-frame"
+        hidden
+        title="Mozilla PDF.js viewer"
+        src="./pdfjs-6.0.227-dist/web/viewer.html?file=demo/sample.pdf"
+      ></iframe>
     </main>
 
     <script type="module" src="./main.js"></script>

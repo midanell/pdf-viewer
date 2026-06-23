@@ -250,3 +250,7 @@ npm run dev
 ## Browser requirements
 
 Requires a browser that supports ES modules, `IntersectionObserver`, `ResizeObserver`, and the Web Animations API — all baseline-available in current evergreen browsers.
+
+## Comparison pdfjs
+
+Requires the download of the pdfjs-dist from github (v6.0.227), unpack and add the whole folder with the name pdfjs-6.0.227-dist to the demo folder.

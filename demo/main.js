@@ -79,7 +79,10 @@ function applyPageOrder() {
 // Page order: apply on Enter or when focus leaves the input.
 const pageOrderInput = document.getElementById("opt-page-order");
 pageOrderInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") { e.preventDefault(); applyPageOrder(); }
+  if (e.key === "Enter") {
+    e.preventDefault();
+    applyPageOrder();
+  }
 });
 pageOrderInput.addEventListener("blur", applyPageOrder);
 document
@@ -166,6 +169,88 @@ divider.addEventListener("pointerdown", (e) => {
   divider.addEventListener("pointerup", onUp);
 });
 
+// ── Viewer toggle ─────────────────────────────────────────────────────────────
+
+const mozillaFrame = document.getElementById("mozilla-frame");
+const toggleBtn = document.getElementById("viewer-toggle");
+
+// Activate the Mozilla prebuilt viewer exclusively: destroy the custom viewer
+// and load viewer.html in the iframe. The iframe src is set fresh each time so
+// a clean load is used (useful for perf measurements).
+function enterMozillaMode() {
+  if (viewer) {
+    viewer.destroy();
+    viewer = null;
+  }
+  rebuilding = false;
+  host.hidden = true;
+  host.style.display = "none";
+
+  const base = new URL("./", location.href);
+  const viewerUrl = new URL("pdfjs-6.0.227-dist/web/viewer", base);
+  // Source - https://stackoverflow.com/a/18750001
+  // Posted by Chris Baker, modified by community. See post 'Timeline' for change history
+  // Retrieved 2026-06-23, License - CC BY-SA 4.0
+
+  const encodedStr = encodeStr(new URL("sample.pdf", base).href);
+  viewerUrl.searchParams.set("file", encodedStr);
+  mozillaFrame.src = viewerUrl.href;
+  mozillaFrame.hidden = false;
+  console.log(mozillaFrame.src);
+
+  toggleBtn.textContent = "Switch to Custom";
+  history.replaceState(null, "", "?pdf_mode=mozilla");
+}
+
+// Activate the custom viewer exclusively: unload the iframe and rebuild.
+function enterCustomMode() {
+  mozillaFrame.src = "";
+  mozillaFrame.hidden = true;
+  host.hidden = false;
+  host.style.display = "";
+
+  toggleBtn.textContent = "Switch to Mozilla";
+  history.replaceState(null, "", "?pdf_mode=custom");
+  rebuild();
+}
+
+toggleBtn.addEventListener("click", () => {
+  if (mozillaFrame.hidden) {
+    enterMozillaMode();
+  } else {
+    enterCustomMode();
+  }
+});
+
+// ── URL param sync ────────────────────────────────────────────────────────────
+
+function setUrlParam(key, value) {
+  const url = new URL(location.href);
+  url.searchParams.set(key, value);
+  history.replaceState(null, "", url.search);
+}
+
+// Sync full_pdf_cache param ↔ opt-cache checkbox (read before initial rebuild)
+const cacheCheckbox = document.getElementById("opt-cache");
+const initCache = new URLSearchParams(location.search).get("full_pdf_cache");
+if (initCache === "on") cacheCheckbox.checked = true;
+else if (initCache === "off") cacheCheckbox.checked = false;
+
+cacheCheckbox.addEventListener("change", () => {
+  setUrlParam("full_pdf_cache", cacheCheckbox.checked ? "on" : "off");
+});
+
 // ── Initial load ──────────────────────────────────────────────────────────────
 
-rebuild();
+if (new URLSearchParams(location.search).get("pdf_mode") === "mozilla") {
+  enterMozillaMode();
+} else {
+  rebuild();
+}
+
+function encodeStr(str) {
+  return str.replace(
+    /[\u00A0-\u9999<>\&]/g,
+    (i) => "&#" + i.charCodeAt(0) + ";",
+  );
+}
