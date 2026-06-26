@@ -141,6 +141,10 @@ export class PdfToolbar {
       boxSizing: "border-box",
       appearance: "textfield",
       MozAppearance: "textfield",
+      // Opt out of the toolbar's user-select:none — Safari otherwise suppresses
+      // input/keydown events on form controls inside a user-select:none ancestor.
+      WebkitUserSelect: "text",
+      userSelect: "text",
     });
 
     const navTotal = document.createElement("span");
@@ -241,14 +245,57 @@ export class PdfToolbar {
     Object.assign(searchInput.style, {
       width: "100px",
       height: "26px",
-      padding: "0 8px",
+      padding: "0 26px 0 8px", // right padding reserves space for the spinner
       background: "rgba(0,0,0,0.4)",
       color: "#fff",
       border: "1px solid rgba(255,255,255,0.15)",
       borderRadius: "3px",
       fontSize: "13px",
       boxSizing: "border-box",
+      WebkitAppearance: "none",
+      appearance: "none",
+      WebkitUserSelect: "text",
+      userSelect: "text",
     });
+
+    // Wrapper gives the spinner an absolutely-positioned anchor inside the input.
+    const searchWrapper = document.createElement("div");
+    Object.assign(searchWrapper.style, {
+      position: "relative",
+      display: "inline-flex",
+      flexShrink: "0",
+    });
+    searchWrapper.appendChild(searchInput);
+
+    const searchSpinnerOuter = document.createElement("div");
+    Object.assign(searchSpinnerOuter.style, {
+      position: "absolute",
+      right: "7px",
+      top: "50%",
+      transform: "translateY(-50%)",
+      pointerEvents: "none",
+      display: "none",
+    });
+    searchSpinnerOuter.setAttribute("aria-hidden", "true");
+    const searchSpinnerInner = document.createElement("div");
+    Object.assign(searchSpinnerInner.style, {
+      width: "11px",
+      height: "11px",
+      borderRadius: "50%",
+      border: "2px solid rgba(255,255,255,0.2)",
+      borderTopColor: "rgba(255,255,255,0.85)",
+      boxSizing: "border-box",
+      animation: "pdf-viewer-spin 0.7s linear infinite",
+    });
+    searchSpinnerOuter.appendChild(searchSpinnerInner);
+    searchWrapper.appendChild(searchSpinnerOuter);
+
+    if (!document.getElementById("pdf-viewer-spin-kf")) {
+      const kf = document.createElement("style");
+      kf.id = "pdf-viewer-spin-kf";
+      kf.textContent = "@keyframes pdf-viewer-spin{to{transform:rotate(360deg)}}";
+      document.head.appendChild(kf);
+    }
 
     const matchCaseBtn = document.createElement("button");
     matchCaseBtn.className = "pdf-viewer-match-case";
@@ -293,6 +340,7 @@ export class PdfToolbar {
     applyToggleStyle(wholeWordBtn, false);
 
     const triggerSearch = () => {
+      searchSpinnerOuter.style.display = "block";
       onSearch?.({
         query: searchInput.value.trim(),
         matchCase,
@@ -301,16 +349,24 @@ export class PdfToolbar {
     };
 
     this._searchTimer = null;
-    searchInput.oninput = () => {
+    searchInput.addEventListener("input", () => {
       clearTimeout(this._searchTimer);
       this._searchTimer = setTimeout(triggerSearch, 250);
-    };
-    searchInput.onkeydown = (e) => {
+    });
+    searchInput.addEventListener("keydown", (e) => {
       if (e.key !== "Enter") return;
       e.preventDefault();
+      // If a debounced search is still pending, commit it now instead of
+      // navigating stale matches.
+      if (this._searchTimer) {
+        clearTimeout(this._searchTimer);
+        this._searchTimer = null;
+        triggerSearch();
+        return;
+      }
       if (e.shiftKey) onPrevMatch?.();
       else onNextMatch?.();
-    };
+    });
 
     matchCaseBtn.onclick = () => {
       matchCase = !matchCase;
@@ -327,7 +383,7 @@ export class PdfToolbar {
     nextMatchBtn.onclick = () => onNextMatch?.();
 
     searchGroup.append(
-      searchInput,
+      searchWrapper,
       matchCaseBtn,
       wholeWordBtn,
       prevMatchBtn,
@@ -362,8 +418,8 @@ export class PdfToolbar {
       },
       {
         container: searchGroup,
-        fullOrder: [searchInput, prevMatchBtn, counter, nextMatchBtn],
-        essentials: [searchInput],
+        fullOrder: [searchWrapper, prevMatchBtn, counter, nextMatchBtn],
+        essentials: [searchWrapper],
         nonEssentials: [prevMatchBtn, counter, nextMatchBtn],
         alwaysInDropdown: [matchCaseBtn, wholeWordBtn],
         moreBtn: searchMore,
@@ -396,6 +452,7 @@ export class PdfToolbar {
     this._prevBtn = prev;
     this._nextBtn = next;
     this._searchInput = searchInput;
+    this._searchSpinner = searchSpinnerOuter;
     this._searchCount = counter;
     this._prevMatchBtn = prevMatchBtn;
     this._nextMatchBtn = nextMatchBtn;
@@ -489,6 +546,7 @@ export class PdfToolbar {
 
   updateSearch(current, total) {
     if (!this._searchCount) return;
+    if (this._searchSpinner) this._searchSpinner.style.display = "none";
     const hasQuery = this._searchInput?.value.trim().length > 0;
     if (total === 0 && !hasQuery) {
       this._searchCount.textContent = "";
@@ -515,6 +573,7 @@ export class PdfToolbar {
     if (!this._searchInput) return;
     this._searchInput.value = "";
     clearTimeout(this._searchTimer);
+    if (this._searchSpinner) this._searchSpinner.style.display = "none";
   }
 
   isSearchFocused() {
@@ -536,6 +595,7 @@ export class PdfToolbar {
     this._prevBtn = null;
     this._nextBtn = null;
     this._searchInput = null;
+    this._searchSpinner = null;
     this._searchCount = null;
     this._prevMatchBtn = null;
     this._nextMatchBtn = null;

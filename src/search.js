@@ -142,9 +142,26 @@ export class PdfSearch {
   _getTextItems(pr, index) {
     let cached = this._textCache.get(index);
     if (!cached) {
-      cached = pr.page
-        .getTextContent()
-        .then((tc) => tc.items.map((it) => it.str));
+      // getTextContent() internally uses ReadableStream async iteration
+      // (Symbol.asyncIterator) which Safari < 16.4 doesn't support.
+      // streamTextContent() + reader.read() is the universally-safe path.
+      cached = (async () => {
+        const stream = pr.page.streamTextContent();
+        const reader = stream.getReader();
+        const strs = [];
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            for (const item of value.items) {
+              if (item.str) strs.push(item.str);
+            }
+          }
+        } finally {
+          reader.releaseLock();
+        }
+        return strs;
+      })();
       // Cache the promise so overlapping searches share one worker fetch.
       this._textCache.set(index, cached);
     }
