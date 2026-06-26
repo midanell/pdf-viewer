@@ -45,7 +45,8 @@ async function rebuild() {
 
     const opts = getOpts();
     viewer = new PdfViewer(host, opts);
-    await viewer.load("./sample.pdf");
+    const pdfParam = new URLSearchParams(location.search).get("pdf") ?? "sample.pdf";
+    await viewer.load(`./${pdfParam}`);
     window.viewer = viewer;
   } finally {
     rebuilding = false;
@@ -192,7 +193,9 @@ function enterMozillaMode() {
   // Posted by Chris Baker, modified by community. See post 'Timeline' for change history
   // Retrieved 2026-06-23, License - CC BY-SA 4.0
 
-  const encodedStr = encodeStr(new URL("sample.pdf", base).href);
+  const pdfParam =
+    new URLSearchParams(location.search).get("pdf") ?? "sample.pdf";
+  const encodedStr = encodeStr(new URL(pdfParam, base).href);
   viewerUrl.searchParams.set("file", encodedStr);
   mozillaFrame.src = viewerUrl.href;
   mozillaFrame.hidden = false;
