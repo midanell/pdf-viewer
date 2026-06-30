@@ -1,0 +1,19 @@
+{
+  "name": "pdf-viewer-perf-test",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "install:browsers": "playwright install chromium",
+    "run": "node harness/runMatrix.js",
+    "run:quick": "node harness/runMatrix.js --quick",
+    "run:single": "node harness/runSingle.js",
+    "analyze": "node analyze/aggregate.js && node analyze/charts.js && node analyze/report.js",
+    "analyze:quick": "node analyze/aggregate.js --quick && node analyze/charts.js --quick && node analyze/report.js --quick"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0",
+    "vega": "^5.30.0",
+    "vega-lite": "^5.20.0",
+    "canvas": "^3.0.0"
+  }
+}

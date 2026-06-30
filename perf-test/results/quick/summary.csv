@@ -1,0 +1,9 @@
+label,pdf,n,timeToFirstPage_median,timeToFirstPage_iqr,timeToDocumentReady_median,timeToDocumentReady_iqr,heapAfterFirstPage_median,heapAfterFirstPage_iqr,heapAfterDocReady_median,heapAfterDocReady_iqr,heapBottom_median,heapBottom_iqr,heapAfterScrollBack_median,heapAfterScrollBack_iqr,longTaskCount_median,longTaskCount_iqr,longTaskTotalMs_median,longTaskTotalMs_iqr,droppedFrames_median,droppedFrames_iqr
+baseline,sample_1.pdf,5,572,20,,,,,10983414,29448,13019685,557212,13241134,543848,2,0,109,2,12,0
+baseline,sample_2.pdf,5,1089,13,,,,,9576081,463836,9983456,942395,10104197,444997,0,0,0,0,6,2
+new-no-cache,sample_1.pdf,5,321,10,321,10,8871876,170822,8985383,109093,8303406,84424,8312994,84400,0,0,0,0,2,1
+new-no-cache,sample_2.pdf,5,472,6,473,6,8823956,32196,8830548,32196,8843547,32184,8853015,32184,0,0,0,0,1,1
+new-cache-cold,sample_1.pdf,5,340,16,341,16,8811091,479607,8211292,108327,10106728,32203,10164000,519648,0,0,0,0,10,2
+new-cache-cold,sample_2.pdf,5,486,37,487,37,9286940,33176,9296816,33176,9021236,23881,11116045,612007,0,0,0,0,1,1
+new-cache-warm,sample_1.pdf,5,280,7,281,7,8889448,247773,9074950,981035,9681909,102339,11608159,1861425,0,0,0,0,10,1
+new-cache-warm,sample_2.pdf,5,404,18,404,18,9092253,29998,9099669,33738,8522866,99843,11025096,147362,0,0,0,0,1,1

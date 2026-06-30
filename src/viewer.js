@@ -111,6 +111,7 @@ export class PdfViewer {
   // ── Document lifecycle ──────────────────────────────────────────────────────
 
   async load(url, options = {}) {
+    performance.mark("pdf-load-start");
     const gen = ++this._loadGen;
     // A previous load may still be in flight with its overlay showing; clear it
     // so overlays never stack or get orphaned in the host DOM.
@@ -341,11 +342,15 @@ export class PdfViewer {
 
     if (this.renderers[0]) {
       await this.renderers[0].render();
+      performance.mark("first-page-rendered");
+      performance.measure("time-to-first-page", "pdf-load-start", "first-page-rendered");
     }
     if (gen !== this._buildGen) return;
     this._toolbar?.updateZoom(this._effectiveScale());
 
     this._startRenderPipeline();
+    performance.mark("document-ready");
+    performance.measure("time-to-document-ready", "pdf-load-start", "document-ready");
 
     this._currentPage = 1;
     if (this._scrollRoot) this._scrollRoot.scrollTop = 0;
@@ -682,6 +687,15 @@ export class PdfViewer {
       );
       pr.setCustomAnnotations(subset);
     }
+  }
+
+  // ── Cache ────────────────────────────────────────────────────────────────────
+
+  clearCache() {
+    if (!this.pdf) return;
+    this._cacheToken++;
+    for (const pr of this.renderers) pr.discard();
+    if (this._cacheFullPdf) this._renderAllCached();
   }
 
   // ── Zoom ────────────────────────────────────────────────────────────────────
