@@ -1,5 +1,7 @@
-const THUMB_SCALE = 0.2;
-const HIGHLIGHT = "2px solid rgba(74,158,255,0.8)";
+const THUMB_SCALE     = 0.2;
+const PANEL_PADDING_PX = 24;   // horizontal space around items inside the panel
+const LABEL_FONT_SIZE  = "10px";
+const HIGHLIGHT        = "2px solid rgba(74,158,255,0.8)";
 
 export class PdfThumbnails {
   constructor(renderers, { onNavigate } = {}) {
@@ -7,23 +9,7 @@ export class PdfThumbnails {
     this._currentPage = 1;
     this._rotation = 0;
 
-    const firstViewport = renderers[0]?.page.getViewport({ scale: THUMB_SCALE });
-    const thumbW = firstViewport
-      ? Math.floor(Math.max(firstViewport.width, firstViewport.height))
-      : 100;
-    const panelWidth = thumbW + 24;
-
-    this._panel = document.createElement("div");
-    this._panel.className = "pdf-thumbnails-panel";
-    Object.assign(this._panel.style, {
-      width: `${panelWidth}px`,
-      flexShrink: "0",
-      height: "100%",
-      overflowY: "auto",
-      background: "rgba(0,0,0,0.07)",
-      display: "none",
-    });
-
+    this._panel = this._buildPanel(renderers);
     this._items = renderers.map((pr, i) => this._createItem(pr, i + 1));
     for (const item of this._items) this._panel.appendChild(item.wrapper);
 
@@ -33,13 +19,16 @@ export class PdfThumbnails {
     );
   }
 
+  // ── Public API ─────────────────────────────────────────────────────────────
+
   get panel() {
     return this._panel;
   }
 
   show() {
     this._panel.style.display = "block";
-    // Reconnect so the observer re-evaluates which items are now in view.
+    // Disconnect then reconnect so the observer re-evaluates which items are now
+    // actually in view after the panel became visible.
     this._observer.disconnect();
     for (const item of this._items) this._observer.observe(item.wrapper);
   }
@@ -52,19 +41,7 @@ export class PdfThumbnails {
     if (rotation === this._rotation) return;
     this._rotation = rotation;
     for (const item of this._items) {
-      const viewport = item.pr.page.getViewport({
-        scale: THUMB_SCALE,
-        rotation,
-      });
-      const w = Math.floor(viewport.width);
-      const h = Math.floor(viewport.height);
-      item.wrapper.style.width = `${w}px`;
-      item.wrapper.style.height = `${h}px`;
-      item.canvas.width = 0;
-      item.canvas.height = 0;
-      item.canvas.style.display = "none";
-      item.spinner.style.display = "block";
-      item.rendered = false;
+      this._resizeItem(item, rotation);
     }
     this._observer.disconnect();
     if (this._panel.style.display !== "none") {
@@ -90,65 +67,97 @@ export class PdfThumbnails {
     this._items = [];
   }
 
-  _createItem(pr, slotIndex) {
-    const viewport = pr.page.getViewport({
-      scale: THUMB_SCALE,
-      rotation: this._rotation,
+  // ── DOM construction ───────────────────────────────────────────────────────
+
+  _buildPanel(renderers) {
+    const panelWidth = this._panelWidthFor(renderers[0]);
+    const panel = document.createElement("div");
+    panel.className = "pdf-thumbnails-panel";
+    Object.assign(panel.style, {
+      width: `${panelWidth}px`,
+      flexShrink: "0",
+      height: "100%",
+      overflowY: "auto",
+      background: "rgba(0,0,0,0.07)",
+      display: "none",
     });
+    return panel;
+  }
+
+  // The panel width is driven by the largest thumbnail dimension so both
+  // portrait and landscape pages fit without horizontal scrolling.
+  _panelWidthFor(firstRenderer) {
+    if (!firstRenderer) return 100 + PANEL_PADDING_PX;
+    const vp = firstRenderer.page.getViewport({ scale: THUMB_SCALE });
+    return Math.floor(Math.max(vp.width, vp.height)) + PANEL_PADDING_PX;
+  }
+
+  _createItem(pr, slotIndex) {
+    const viewport = pr.page.getViewport({ scale: THUMB_SCALE, rotation: this._rotation });
     const w = Math.floor(viewport.width);
     const h = Math.floor(viewport.height);
 
+    const wrapper = this._createItemWrapper(w, h, slotIndex, pr.pageNumber);
+    const canvas  = this._createThumbCanvas();
+    const spinner = this._createSpinner();
+    const label   = this._createThumbLabel(pr.pageNumber);
+
+    wrapper.append(canvas, spinner, label);
+    wrapper.onclick = () => this._onNavigate?.(slotIndex);
+    return { wrapper, canvas, spinner, pr, rendered: false };
+  }
+
+  _createItemWrapper(w, h, slotIndex, pageNumber) {
     const wrapper = document.createElement("div");
-    wrapper.dataset.pageNumber = String(pr.pageNumber);
-    wrapper.dataset.slotIndex = String(slotIndex);
+    wrapper.dataset.pageNumber = String(pageNumber);
+    wrapper.dataset.slotIndex  = String(slotIndex);
     Object.assign(wrapper.style, {
-      width: `${w}px`,
-      height: `${h}px`,
-      margin: "8px auto",
-      cursor: "pointer",
-      position: "relative",
+      width:      `${w}px`,
+      height:     `${h}px`,
+      margin:     "8px auto",
+      cursor:     "pointer",
+      position:   "relative",
       background: "#ccc",
       flexShrink: "0",
     });
+    return wrapper;
+  }
 
+  _createThumbCanvas() {
     const canvas = document.createElement("canvas");
     canvas.style.display = "none";
-    wrapper.appendChild(canvas);
+    return canvas;
+  }
 
-    const spinner = this._createSpinner();
-    wrapper.appendChild(spinner);
-
+  _createThumbLabel(pageNumber) {
     const label = document.createElement("span");
-    label.textContent = String(pr.pageNumber);
+    label.textContent = String(pageNumber);
     Object.assign(label.style, {
-      position: "absolute",
-      bottom: "2px",
-      right: "4px",
-      fontSize: "10px",
-      color: "rgba(0,0,0,0.6)",
+      position:      "absolute",
+      bottom:        "2px",
+      right:         "4px",
+      fontSize:      LABEL_FONT_SIZE,
+      color:         "rgba(0,0,0,0.6)",
       pointerEvents: "none",
     });
-    wrapper.appendChild(label);
-
-    wrapper.onclick = () => this._onNavigate?.(slotIndex);
-    return { wrapper, canvas, spinner, pr, rendered: false };
+    return label;
   }
 
   _createSpinner() {
     const el = document.createElement("div");
     Object.assign(el.style, {
-      position: "absolute",
-      top: "50%",
-      left: "50%",
-      width: "16px",
-      height: "16px",
-      marginTop: "-8px",
-      marginLeft: "-8px",
-      border: "2px solid rgba(0,0,0,0.12)",
+      position:    "absolute",
+      top:         "50%",
+      left:        "50%",
+      width:       "16px",
+      height:      "16px",
+      marginTop:   "-8px",
+      marginLeft:  "-8px",
+      border:      "2px solid rgba(0,0,0,0.12)",
       borderTopColor: "rgba(0,0,0,0.55)",
       borderRadius: "50%",
       pointerEvents: "none",
-      boxSizing: "border-box",
+      boxSizing:   "border-box",
     });
     el.animate(
       [{ transform: "rotate(0deg)" }, { transform: "rotate(360deg)" }],
@@ -157,31 +166,48 @@ export class PdfThumbnails {
     return el;
   }
 
+  // ── Rendering ──────────────────────────────────────────────────────────────
+
   async _renderItem(item) {
     if (item.rendered) return;
     item.rendered = true;
+
     const { pr, canvas, spinner } = item;
-    const viewport = pr.page.getViewport({
-      scale: THUMB_SCALE,
-      rotation: this._rotation,
-    });
+    const viewport = pr.page.getViewport({ scale: THUMB_SCALE, rotation: this._rotation });
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.floor(viewport.width * dpr);
+
+    canvas.width  = Math.floor(viewport.width  * dpr);
     canvas.height = Math.floor(viewport.height * dpr);
-    canvas.style.width = Math.floor(viewport.width) + "px";
+    canvas.style.width  = Math.floor(viewport.width)  + "px";
     canvas.style.height = Math.floor(viewport.height) + "px";
+
     const ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
     try {
       await pr.page.render({ canvasContext: ctx, viewport }).promise;
     } catch (e) {
-      // Allow a later intersection to retry (e.g. the shared page was
-      // cleaned up mid-render by the main PageRenderer).
+      // Allow a later intersection to retry (e.g. the shared page was cleaned
+      // up mid-render by the main PageRenderer).
       item.rendered = false;
       throw e;
     }
-    canvas.style.display = "block";
+
+    canvas.style.display  = "block";
     spinner.style.display = "none";
+  }
+
+  // Zeros the canvas and shows the spinner so the item re-renders on its next
+  // intersection (called when rotation changes).
+  _resizeItem(item, rotation) {
+    const viewport = item.pr.page.getViewport({ scale: THUMB_SCALE, rotation });
+    item.wrapper.style.width  = `${Math.floor(viewport.width)}px`;
+    item.wrapper.style.height = `${Math.floor(viewport.height)}px`;
+    item.canvas.width         = 0;
+    item.canvas.height        = 0;
+    item.canvas.style.display  = "none";
+    item.spinner.style.display = "block";
+    item.rendered = false;
   }
 
   _onIntersect(entries) {

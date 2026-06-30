@@ -1,5 +1,8 @@
 import { GlobalWorkerOptions } from "pdfjs-dist";
 
+// Use the unminified worker in development for readable stack traces. The path
+// is resolved relative to this file so it works under any static server without
+// a bundler.
 GlobalWorkerOptions.workerSrc = new URL(
   "../node_modules/pdfjs-dist/build/pdf.worker.mjs",
   import.meta.url
@@ -9,13 +12,14 @@ GlobalWorkerOptions.workerSrc = new URL(
 // added wasmUrl + iccUrl alongside cMapUrl/standardFontDataUrl. When an asset
 // is needed but its URL is unset, getDocument throws. Resolve all four from the
 // local node_modules so the worker can fetch them (trailing slashes required).
-const asset = (path) =>
-  new URL(`../node_modules/pdfjs-dist/${path}`, import.meta.url).href;
+function assetUrl(path) {
+  return new URL(`../node_modules/pdfjs-dist/${path}`, import.meta.url).href;
+}
 
 export const PDF_ASSET_URLS = {
-  cMapUrl: asset("cmaps/"),
+  cMapUrl: assetUrl("cmaps/"),
   cMapPacked: true,
-  standardFontDataUrl: asset("standard_fonts/"),
-  wasmUrl: asset("wasm/"),
-  iccUrl: asset("iccs/"),
+  standardFontDataUrl: assetUrl("standard_fonts/"),
+  wasmUrl: assetUrl("wasm/"),
+  iccUrl: assetUrl("iccs/"),
 };
