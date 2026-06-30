@@ -2,3 +2,4 @@ node_modules/
 .DS_Store
 demo/*.pdf
 demo/pdfjs-6.0.227-dist
+perf-test/reports
