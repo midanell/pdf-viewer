@@ -11,9 +11,10 @@
     "analyze:quick": "node analyze/aggregate.js --quick && node analyze/charts.js --quick && node analyze/report.js --quick"
   },
   "dependencies": {
+    "canvas": "^3.0.0",
+    "marked": "^18.0.5",
     "playwright": "^1.48.0",
     "vega": "^5.30.0",
-    "vega-lite": "^5.20.0",
-    "canvas": "^3.0.0"
+    "vega-lite": "^5.20.0"
   }
 }
